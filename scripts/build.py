@@ -71,7 +71,7 @@ def get_artist_html(slug, force=False):
     if not force and os.path.exists(cp):
         with open(cp, encoding="utf-8") as f:
             return f.read()
-    url = f"{ARTIST_BASE}{slug}/"
+    url = f"{ARTIST_BASE}{urllib.parse.quote(slug, safe='-')}/"
     html = fetch(url)
     with open(cp, "w", encoding="utf-8") as f:
         f.write(html)
