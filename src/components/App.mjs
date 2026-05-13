@@ -2,7 +2,7 @@ import { ref, computed, watch } from "../deps/vue.mjs";
 import { persistRef } from "../deps/vue.mjs";
 import { css, glob } from "../deps/goober.mjs";
 import { applicationReady, applicationError, signalDOMReady } from "../services/data/lifecycle.mjs";
-import { artists, filters as filterOptions } from "../services/data/festival-data.mjs";
+import { artists, venues, distances, filters as filterOptions } from "../services/data/festival-data.mjs";
 import { shortlistSet, toggle as toggleShortlist } from "../services/shortlist.mjs";
 import { matchesFilters, visibleGigsFor, sortArtistsAlpha } from "../services/filtering.mjs";
 import { festivalDayFor, DAY_ORDER } from "../services/festival.mjs";
@@ -12,6 +12,8 @@ import ModeBar from "./ModeBar.mjs";
 import VenueBar from "./VenueBar.mjs";
 import ArtistGrid from "./ArtistGrid.mjs";
 import ArtistModal from "./ArtistModal.mjs";
+import SettingsModal from "./SettingsModal.mjs";
+import RecommendPanel from "./RecommendPanel.mjs";
 
 glob`
   *, *::before, *::after { box-sizing: border-box; }
@@ -63,33 +65,30 @@ const appCls = css`
 
 export default {
   name: "App",
-  components: { Header, ModeBar, VenueBar, ArtistGrid, ArtistModal },
+  components: { Header, ModeBar, VenueBar, ArtistGrid, ArtistModal, SettingsModal, RecommendPanel },
   setup() {
     signalDOMReady();
 
     const nowMs = ref(Date.now());
     const timer = setInterval(() => { nowMs.value = Date.now(); }, 30_000);
 
-    // Default to today's festival day, or Wednesday if outside festival
     const defaultDay = festivalDayFor(Date.now()) || DAY_ORDER[0];
     const mode = ref(defaultDay);
     persistRef(mode, "mode", false);
-    // Guard against stale mode values from a previous layout (e.g. "now", "all")
     const validModes = new Set([...DAY_ORDER, "shortlist"]);
     if (!validModes.has(mode.value)) mode.value = defaultDay;
 
     const selectedVenue = ref("");
     const selectedArtist = ref(null);
+    const showSettings = ref(false);
+    const showRecommend = ref(false);
 
-    // Clear venue selection when switching days
     watch(mode, () => { selectedVenue.value = ""; });
 
-    // The day to filter by: for day modes it's the mode itself, for shortlist show all days
     const activeDay = computed(() =>
       mode.value === "shortlist" ? "" : mode.value
     );
 
-    // Venues playing on the active day (for the VenueBar), derived before venue filter
     const venueOptions = computed(() => {
       if (!activeDay.value) return [];
       const seen = new Map();
@@ -127,10 +126,15 @@ export default {
       venueOptions,
       nowMs,
       selectedArtist,
+      showSettings,
+      showRecommend,
       filteredArtists,
       shortlistSet,
       getVisibleGigs,
       toggleShortlist,
+      artists,
+      venues,
+      distances,
       _timer: timer,
     };
   },
@@ -152,7 +156,11 @@ export default {
       </template>
 
       <template v-else>
-        <Header />
+        <Header
+          :recommend-active="showRecommend"
+          @open-settings="showSettings = true"
+          @open-recommend="showRecommend = !showRecommend"
+        />
         <ModeBar v-model="mode" />
         <VenueBar v-model="selectedVenue" :venues="venueOptions" />
 
@@ -173,6 +181,20 @@ export default {
           :now-ms="nowMs"
           @close="selectedArtist = null"
           @toggle-shortlist="toggleShortlist"
+        />
+
+        <SettingsModal
+          v-if="showSettings"
+          @close="showSettings = false"
+        />
+
+        <RecommendPanel
+          v-if="showRecommend"
+          :artists="artists"
+          :venues="venues"
+          :distances="distances"
+          @close="showRecommend = false"
+          @open-artist="selectedArtist = $event"
         />
       </template>
     </div>
