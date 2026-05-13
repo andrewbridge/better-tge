@@ -1,12 +1,12 @@
 import { css } from "../deps/goober.mjs";
+import { DAY_ORDER } from "../services/festival.mjs";
 
-const MODES = [
-  { id: "now", label: "On Now" },
-  { id: "soon", label: "Up Soon" },
-  { id: "today", label: "Today" },
-  { id: "all", label: "All" },
-  { id: "shortlist", label: "Shortlist" },
-];
+const DAY_LABELS = {
+  wednesday: "Wed",
+  thursday: "Thu",
+  friday: "Fri",
+  saturday: "Sat",
+};
 
 const cls = css`
   display: flex;
@@ -19,20 +19,20 @@ const cls = css`
   &::-webkit-scrollbar { display: none; }
 
   button {
-    flex: 0 0 auto;
+    flex: 1 0 auto;
     font-family: 'Space Mono', monospace;
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    padding: 0.6rem 1.1rem;
+    padding: 0.65rem 0.75rem;
     background: none;
     border: none;
     border-right: 1px solid #333;
     color: #aaa;
     cursor: pointer;
-    transition: color 0.1s, background 0.1s;
     white-space: nowrap;
 
+    &:last-child { border-right: none; }
     &:hover { color: var(--paper); }
     &.active {
       color: var(--ink);
@@ -47,8 +47,16 @@ export default {
     modelValue: { type: String, required: true },
   },
   emits: ["update:modelValue"],
+  data() {
+    return {
+      modes: [
+        ...DAY_ORDER.map((d) => ({ id: d, label: DAY_LABELS[d] })),
+        { id: "shortlist", label: "★ List" },
+      ],
+    };
+  },
   template: `
-    <nav :class="$options.cls" role="tablist" aria-label="Browse mode">
+    <nav :class="$options.cls" role="tablist" aria-label="Day">
       <button
         v-for="m in modes"
         :key="m.id"
@@ -60,7 +68,4 @@ export default {
     </nav>
   `,
   cls,
-  data() {
-    return { modes: MODES };
-  },
 };
