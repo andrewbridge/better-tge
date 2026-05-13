@@ -2,6 +2,7 @@ import { css, glob } from "../deps/goober.mjs";
 import { formatTime } from "../utilities/format.mjs";
 import { venuePretty, servicePretty } from "../utilities/format.mjs";
 import { gigStatus } from "../services/festival.mjs";
+import { trapFocus } from "../utilities/focus-trap.mjs";
 
 glob`
   body.modal-open { overflow: hidden; }
@@ -220,8 +221,16 @@ export default {
     artist(val) {
       if (val) {
         document.body.classList.add("modal-open");
+        this.$nextTick(() => {
+          const sheet = this.$el?.querySelector?.(".sheet");
+          if (sheet) {
+            if (this._releaseTrap) this._releaseTrap();
+            this._releaseTrap = trapFocus(sheet);
+          }
+        });
       } else {
         document.body.classList.remove("modal-open");
+        if (this._releaseTrap) { this._releaseTrap(); this._releaseTrap = null; }
       }
     },
   },
@@ -253,6 +262,7 @@ export default {
   beforeUnmount() {
     document.removeEventListener("keydown", this.handleKey);
     document.body.classList.remove("modal-open");
+    if (this._releaseTrap) this._releaseTrap();
   },
   template: `
     <teleport to="#teleport-root">

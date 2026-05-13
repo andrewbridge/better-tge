@@ -2,6 +2,8 @@ import { shallowReactive, shallowRef } from "../../deps/vue.mjs";
 import { signalDataReady, signalDataError } from "./lifecycle.mjs";
 
 export const artists = shallowRef([]);
+export const venues = shallowRef({});
+export const distances = shallowRef({});
 export const filters = shallowReactive({
   country_options: [],
   day_options: [],
@@ -16,6 +18,8 @@ fetch("data.json")
   })
   .then((data) => {
     artists.value = data.artists || [];
+    venues.value = data.venues || {};
+    distances.value = data.distances || {};
     Object.assign(filters, data.filters || {});
     signalDataReady();
   })

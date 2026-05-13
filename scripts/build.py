@@ -11,6 +11,7 @@ Usage:
 import argparse
 import concurrent.futures
 import json
+import math
 import os
 import re
 import sys
@@ -24,6 +25,9 @@ CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 OUT_PATH = os.path.join(os.path.dirname(__file__), "..", "src", "data.json")
 LINEUP_URL = "https://greatescapefestival.com/wordpress/wp-admin/admin-ajax.php"
 ARTIST_BASE = "https://greatescapefestival.com/artists/"
+VENUE_BASE = "https://greatescapefestival.com/festival-venue/"
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_DELAY = 1.1  # Nominatim rate limit: max 1 req/sec
 MAX_WORKERS = 5
 WORKER_DELAY = 0.3  # seconds between requests per worker
 
@@ -408,6 +412,128 @@ def build_filter_options(artists):
     }
 
 
+def parse_venue_address(html):
+    """Extract a street address from a venue page."""
+    # Schema.org address
+    m = re.search(r'"streetAddress"\s*:\s*"([^"]+)"', html)
+    if m:
+        return m.group(1).strip()
+    # <address> tag
+    m = re.search(r'<address[^>]*>(.*?)</address>', html, re.DOTALL)
+    if m:
+        return re.sub(r'<[^>]+>', ' ', m.group(1)).strip()
+    # Common WordPress venue field patterns
+    for pat in [
+        r'class="[^"]*address[^"]*"[^>]*>(.*?)</[^>]+>',
+        r'class="[^"]*location[^"]*"[^>]*>(.*?)</[^>]+>',
+        r'<p[^>]*>\s*([\w\s]+,\s*Brighton[^<]*)</p>',
+    ]:
+        m = re.search(pat, html, re.DOTALL | re.IGNORECASE)
+        if m:
+            text = re.sub(r'<[^>]+>', ' ', m.group(1)).strip()
+            if text:
+                return text
+    return ""
+
+
+def geocode_venue(name, address, city="Brighton"):
+    """Geocode a venue using Nominatim. Returns (lat, lng) or None."""
+    query = f"{address or name}, {city}, UK"
+    params = urllib.parse.urlencode({
+        "q": query,
+        "format": "json",
+        "limit": 1,
+        "countrycodes": "gb",
+    })
+    url = f"{NOMINATIM_URL}?{params}"
+    headers = {
+        "User-Agent": "better-tge-scraper/1.0 (github.com/andrewbridge/better-tge)",
+        "Accept": "application/json",
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+        if data:
+            return float(data[0]["lat"]), float(data[0]["lon"])
+    except Exception as e:
+        print(f"  WARN: geocode failed for {name}: {e}", file=sys.stderr)
+    return None
+
+
+def haversine_m(lat1, lng1, lat2, lng2):
+    """Walking-distance approximation (straight-line) in metres."""
+    R = 6_371_000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return round(2 * R * math.asin(math.sqrt(a)))
+
+
+def scrape_venues(artists, force_rescrape):
+    """
+    Collect unique venues from gig data, scrape their pages for addresses,
+    geocode via Nominatim, and return a dict of venue metadata + distance matrix.
+    """
+    venue_cache = os.path.join(CACHE_DIR, "_venues.json")
+    if not force_rescrape and os.path.exists(venue_cache):
+        with open(venue_cache, encoding="utf-8") as f:
+            return json.load(f)
+
+    # Collect unique venues from all gigs
+    seen = {}
+    for a in artists:
+        for g in a.get("gigs", []):
+            slug = g["venue"]
+            if slug and slug not in seen:
+                seen[slug] = g.get("venue_name") or slug.replace("-", " ").title()
+
+    venues = {}
+    print(f"Geocoding {len(seen)} venues …")
+    for slug, name in sorted(seen.items()):
+        cp = os.path.join(CACHE_DIR, f"_venue_{slug}.html")
+        if not force_rescrape and os.path.exists(cp):
+            with open(cp, encoding="utf-8") as f:
+                html = f.read()
+        else:
+            try:
+                url = f"{VENUE_BASE}{urllib.parse.quote(slug, safe='-')}/"
+                html = fetch(url)
+                os.makedirs(CACHE_DIR, exist_ok=True)
+                with open(cp, "w", encoding="utf-8") as f:
+                    f.write(html)
+            except Exception as e:
+                print(f"  WARN: venue page failed for {slug}: {e}", file=sys.stderr)
+                html = ""
+
+        address = parse_venue_address(html) if html else ""
+
+        time.sleep(NOMINATIM_DELAY)
+        coords = geocode_venue(name, address)
+
+        venues[slug] = {"name": name, "address": address}
+        if coords:
+            venues[slug]["lat"] = coords[0]
+            venues[slug]["lng"] = coords[1]
+        print(f"  {name}: {coords}")
+
+    # Build pairwise distance matrix for venues that have coordinates
+    geocoded = {s: v for s, v in venues.items() if "lat" in v}
+    distances = {}
+    for s1, v1 in geocoded.items():
+        distances[s1] = {}
+        for s2, v2 in geocoded.items():
+            if s1 != s2:
+                distances[s1][s2] = haversine_m(v1["lat"], v1["lng"], v2["lat"], v2["lng"])
+
+    result = {"venues": venues, "distances": distances}
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(venue_cache, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--force-rescrape", action="store_true")
@@ -434,10 +560,13 @@ def main():
                 print(f"  ERROR processing artist: {e}", file=sys.stderr)
 
     filters = build_filter_options(processed)
+    venue_data = scrape_venues(processed, args.force_rescrape)
 
     output = {
         "_built_at": datetime.now(timezone.utc).isoformat(),
         "filters": filters,
+        "venues": venue_data["venues"],
+        "distances": venue_data["distances"],
         "artists": processed,
     }
 
@@ -446,7 +575,7 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False)
 
-    print(f"Written {len(processed)} artists → {out_path}")
+    print(f"Written {len(processed)} artists + {len(venue_data['venues'])} venues → {out_path}")
 
 
 if __name__ == "__main__":

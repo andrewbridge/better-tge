@@ -1,6 +1,20 @@
 {
   "_built_at": "2026-05-13T00:00:00.000Z",
   "_fixture": true,
+  "venues": {
+    "daltons": {"name": "Daltons", "address": "8 Sydney Street, Brighton", "lat": 50.8271, "lng": -0.1374},
+    "hope-and-ruin": {"name": "Hope & Ruin", "address": "11-12 Queens Road, Brighton", "lat": 50.8228, "lng": -0.1412},
+    "one-church": {"name": "One Church", "address": "9 Queens Road, Brighton", "lat": 50.8232, "lng": -0.1409},
+    "prince-albert": {"name": "Prince Albert", "address": "48 Trafalgar Street, Brighton", "lat": 50.8257, "lng": -0.1390},
+    "sticky-mike": {"name": "Sticky Mike's Frog Bar", "address": "1 Middle Street, Brighton", "lat": 50.8221, "lng": -0.1413}
+  },
+  "distances": {
+    "daltons": {"hope-and-ruin": 620, "one-church": 600, "prince-albert": 200, "sticky-mike": 640},
+    "hope-and-ruin": {"daltons": 620, "one-church": 40, "prince-albert": 430, "sticky-mike": 110},
+    "one-church": {"daltons": 600, "hope-and-ruin": 40, "prince-albert": 420, "sticky-mike": 120},
+    "prince-albert": {"daltons": 200, "hope-and-ruin": 430, "one-church": 420, "sticky-mike": 470},
+    "sticky-mike": {"daltons": 640, "hope-and-ruin": 110, "one-church": 120, "prince-albert": 470}
+  },
   "filters": {
     "country_options": [
       {"val": "australia", "txt": "Australia"},
