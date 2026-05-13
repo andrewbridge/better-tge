@@ -48,7 +48,9 @@ export const visibleGigsFor = (artist, activeFilters, mode, nowMs) => {
     });
   }
   if (day) {
-    return artist.gigs.filter((g) => g.day === day);
+    return artist.gigs.filter(
+      (g) => g.day === day && (!activeFilters.location || g.venue === activeFilters.location)
+    );
   }
   return artist.gigs;
 };

@@ -1,15 +1,15 @@
 import { ref, computed, watch } from "../deps/vue.mjs";
 import { persistRef } from "../deps/vue.mjs";
 import { css, glob } from "../deps/goober.mjs";
-import { applicationReady, applicationError } from "../services/data/lifecycle.mjs";
-import { signalDOMReady } from "../services/data/lifecycle.mjs";
+import { applicationReady, applicationError, signalDOMReady } from "../services/data/lifecycle.mjs";
 import { artists, filters as filterOptions } from "../services/data/festival-data.mjs";
 import { shortlistSet, toggle as toggleShortlist } from "../services/shortlist.mjs";
 import { matchesFilters, visibleGigsFor, sortArtistsAlpha } from "../services/filtering.mjs";
-import { festivalDayFor, isDuringFestival } from "../services/festival.mjs";
+import { festivalDayFor, DAY_ORDER } from "../services/festival.mjs";
+import { venuePretty } from "../utilities/format.mjs";
 import Header from "./Header.mjs";
 import ModeBar from "./ModeBar.mjs";
-import FilterBar from "./Filters.mjs";
+import VenueBar from "./VenueBar.mjs";
 import ArtistGrid from "./ArtistGrid.mjs";
 import ArtistModal from "./ArtistModal.mjs";
 
@@ -52,11 +52,10 @@ const appCls = css`
 
   .count-bar {
     font-family: 'Space Mono', monospace;
-    font-size: 0.62rem;
+    font-size: 0.6rem;
     color: var(--muted);
-    padding: 0.3rem 1rem;
-    background: var(--tint);
-    border-bottom: 1px solid var(--rule);
+    padding: 0.25rem 1rem;
+    border-bottom: 1px solid var(--tint);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -64,45 +63,48 @@ const appCls = css`
 
 export default {
   name: "App",
-  components: { Header, ModeBar, FilterBar, ArtistGrid, ArtistModal },
+  components: { Header, ModeBar, VenueBar, ArtistGrid, ArtistModal },
   setup() {
-    // Signal DOM ready after first render
     signalDOMReady();
-
-    const mode = ref("today");
-    persistRef(mode, "mode", false);
-
-    const activeFilters = ref({ day: "", country: "", genre: "", location: "" });
-    persistRef(activeFilters, "filters", false);
 
     const nowMs = ref(Date.now());
     const timer = setInterval(() => { nowMs.value = Date.now(); }, 30_000);
 
+    // Default to today's festival day, or Wednesday if outside festival
+    const defaultDay = festivalDayFor(Date.now()) || DAY_ORDER[0];
+    const mode = ref(defaultDay);
+    persistRef(mode, "mode", false);
+
+    const selectedVenue = ref("");
     const selectedArtist = ref(null);
 
-    // Auto-set mode based on festival timing
-    watch(nowMs, (ms) => {
-      if (!isDuringFestival(ms) && mode.value === "now") {
-        mode.value = "today";
-      }
-    }, { immediate: true });
+    // Clear venue selection when switching days
+    watch(mode, () => { selectedVenue.value = ""; });
 
-    // When mode changes to today/now/soon, clear day filter (implicit)
-    watch(mode, (m) => {
-      if (["today", "now", "soon"].includes(m)) {
-        activeFilters.value = { ...activeFilters.value, day: "" };
+    // The day to filter by: for day modes it's the mode itself, for shortlist show all days
+    const activeDay = computed(() =>
+      mode.value === "shortlist" ? "" : mode.value
+    );
+
+    // Venues playing on the active day (for the VenueBar), derived before venue filter
+    const venueOptions = computed(() => {
+      if (!activeDay.value) return [];
+      const seen = new Map();
+      for (const artist of artists.value) {
+        for (const gig of artist.gigs) {
+          if (gig.day === activeDay.value && !seen.has(gig.venue)) {
+            seen.set(gig.venue, gig.venue_name || venuePretty(gig.venue));
+          }
+        }
       }
+      return [...seen.entries()]
+        .map(([slug, name]) => ({ slug, name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
     });
-
-    const todayKey = computed(() => festivalDayFor(nowMs.value));
 
     const filteredArtists = computed(() => {
       const ms = nowMs.value;
-      const day = mode.value === "today" || mode.value === "now" || mode.value === "soon"
-        ? todayKey.value
-        : activeFilters.value.day;
-      const effectiveFilters = { ...activeFilters.value, day: day || activeFilters.value.day };
-
+      const effectiveFilters = { day: activeDay.value, country: "", genre: "", location: selectedVenue.value };
       const list = artists.value.filter((a) =>
         matchesFilters(a, effectiveFilters, shortlistSet.value, mode.value, ms)
       );
@@ -110,21 +112,16 @@ export default {
     });
 
     const getVisibleGigs = (artist) => {
-      const ms = nowMs.value;
-      const day = mode.value === "today" || mode.value === "now" || mode.value === "soon"
-        ? todayKey.value
-        : activeFilters.value.day;
-      const effectiveFilters = { ...activeFilters.value, day: day || activeFilters.value.day };
-      return visibleGigsFor(artist, effectiveFilters, mode.value, ms);
+      const effectiveFilters = { day: activeDay.value, country: "", genre: "", location: selectedVenue.value };
+      return visibleGigsFor(artist, effectiveFilters, mode.value, nowMs.value);
     };
 
-    // Cleanup on unmount not easy in setup without onUnmounted import — add it
     return {
       applicationReady,
       applicationError,
       mode,
-      activeFilters,
-      filterOptions,
+      selectedVenue,
+      venueOptions,
       nowMs,
       selectedArtist,
       filteredArtists,
@@ -148,17 +145,15 @@ export default {
       </template>
 
       <template v-else-if="!applicationReady">
-        <!-- Boot screen handled by index.html; nothing to render here yet -->
+        <!-- boot screen visible in index.html until ready -->
       </template>
 
       <template v-else>
         <Header />
         <ModeBar v-model="mode" />
-        <FilterBar v-model="activeFilters" :filter-options="filterOptions" :mode="mode" />
+        <VenueBar v-model="selectedVenue" :venues="venueOptions" />
 
-        <div class="count-bar">
-          {{ filteredArtists.length }} artist{{ filteredArtists.length === 1 ? '' : 's' }}
-        </div>
+        <div class="count-bar">{{ filteredArtists.length }} artists</div>
 
         <ArtistGrid
           :artists="filteredArtists"
@@ -167,7 +162,6 @@ export default {
           :now-ms="nowMs"
           :mode="mode"
           @open="selectedArtist = $event"
-          @toggle-shortlist="toggleShortlist"
         />
 
         <ArtistModal
