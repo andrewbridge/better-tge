@@ -43,13 +43,22 @@ DAY_TO_DATE = {
     "Saturday": "2026-05-16",
 }
 
-# For "DayName Night HH:MM" gigs, the ISO date uses the *next* calendar day
-# so that midnight gigs sort after evening gigs chronologically.
-NIGHT_TO_NEXT_DATE = {
-    "wednesday": "2026-05-14",
-    "thursday": "2026-05-15",
-    "friday": "2026-05-16",
-    "saturday": "2026-05-17",
+# A "Thursday Night HH:MM" gig is calendar-Friday but belongs to Thursday's
+# evening programming. NEXT_DAY maps the night-label day to its calendar day.
+NEXT_DAY = {
+    "wednesday": "thursday",
+    "thursday": "friday",
+    "friday": "saturday",
+    "saturday": "sunday",
+}
+
+# Gigs before this hour belong to the previous day's festival programming.
+NIGHT_CUTOFF_HOUR = 5
+PREV_DAY = {
+    "thursday": "wednesday",
+    "friday": "thursday",
+    "saturday": "friday",
+    "sunday": "saturday",
 }
 
 HEADERS = {
@@ -91,13 +100,13 @@ def get_artist_html(slug, force=False):
     return html
 
 
-def parse_time(time_str, day_str):
-    """Parse a time string + day name → ISO 8601 with BST offset.
+def parse_time(time_str, calendar_day):
+    """Parse a time string + calendar day name → ISO 8601 with BST offset.
 
-    Handles both 12h with meridiem ("12:15pm") and 24h bare ("00:15").
+    Accepts both 12h with meridiem ("12:15pm") and bare 24h ("00:15").
     """
     time_str = time_str.strip()
-    day_str = day_str.strip()
+    calendar_day = calendar_day.strip()
 
     m = re.match(r"(\d{1,2})(?::(\d{2}))?(am|pm)?", time_str, re.IGNORECASE)
     if not m:
@@ -112,32 +121,7 @@ def parse_time(time_str, day_str):
         hour = 0
     # No meridiem → already 24h, use as-is
 
-    date_iso = DAY_TO_DATE.get(day_str)
-    if not date_iso:
-        return None
-
-    return f"{date_iso}T{hour:02d}:{minute:02d}:00+01:00"
-
-
-def parse_time_night(time_str, day_str):
-    """Like parse_time but uses the next calendar date so midnight gigs
-    sort after the same day's evening gigs."""
-    time_str = time_str.strip()
-    day_str = day_str.strip()
-
-    m = re.match(r"(\d{1,2})(?::(\d{2}))?(am|pm)?", time_str, re.IGNORECASE)
-    if not m:
-        return None
-    hour = int(m.group(1))
-    minute = int(m.group(2) or 0)
-    meridiem = (m.group(3) or "").lower()
-
-    if meridiem == "pm" and hour != 12:
-        hour += 12
-    elif meridiem == "am" and hour == 12:
-        hour = 0
-
-    date_iso = NIGHT_TO_NEXT_DATE.get(day_str.lower())
+    date_iso = DAY_TO_DATE.get(calendar_day)
     if not date_iso:
         return None
 
@@ -181,7 +165,7 @@ def parse_gigs(html):
             venue_slug = venue_m.group(1)
             venue_name = venue_m.group(2)
 
-        # Time cells: two .one-half divs — first is venue link, second is the time+day string.
+        # Time cells: two .one-half divs — first is venue link, second is "12:15pm Thursday"
         cells = re.findall(
             r'<div class="grid__item float--left one-half">\s*(.*?)\s*</div>',
             block, re.DOTALL
@@ -191,35 +175,36 @@ def parse_gigs(html):
 
         time_day_raw = re.sub(r"<[^>]+>", "", cells[1]).strip()
 
-        # Format A: "8:00pm Thursday" (daytime gigs, 12h + meridiem, day last)
+        # Format A: "8:00pm Thursday" — daytime gig, day-of-week is the calendar day.
         td_m = re.match(r'(\d{1,2}(?::\d{2})?(?:am|pm))\s+(\w+)', time_day_raw, re.IGNORECASE)
         if td_m:
             time_str = td_m.group(1)
-            day_str = td_m.group(2)
-            is_night = False
+            calendar_day = td_m.group(2).lower()
         else:
-            # Format B: "Thursday Night 00:15" (late-night gigs, 24h, day first)
-            # ISO date uses the *next* calendar day so these sort after evening gigs.
+            # Format B: "Thursday Night 00:15" — calendar day is the *next* day.
             td_m = re.match(r'(\w+)\s+[Nn]ight\s+(\d{1,2}:\d{2})', time_day_raw)
             if not td_m:
                 continue
-            day_str = td_m.group(1)
             time_str = td_m.group(2)
-            is_night = True
+            calendar_day = NEXT_DAY.get(td_m.group(1).lower(), "")
 
-        day_key = day_str.lower()
-        if day_key not in DAY_TO_DATE:
+        if calendar_day not in DAY_TO_DATE:
             continue
 
-        start_iso = parse_time_night(time_str, day_str) if is_night else parse_time(time_str, day_str)
+        start_iso = parse_time(time_str, calendar_day)
         if not start_iso:
             continue
+
+        # Gigs before NIGHT_CUTOFF_HOUR belong to the previous day's evening.
+        iso_hour = int(start_iso[11:13])
+        festival_day = PREV_DAY[calendar_day] if iso_hour < NIGHT_CUTOFF_HOUR and calendar_day in PREV_DAY else calendar_day
 
         gigs.append({
             "venue": venue_slug,
             "venue_name": venue_name,
             "start": start_iso,
-            "day": day_key,
+            "day": calendar_day,
+            "festival_day": festival_day,
         })
 
     return gigs
@@ -369,8 +354,9 @@ def process_artist(raw, force_rescrape):
     embeds = parse_embeds(html) if html else []
     image = parse_image(html) if html else raw.get("image", "")
 
-    # Derive days/venues/locations from gigs (authoritative) or raw fallback
-    days = sorted(set(g["day"] for g in gigs)) or decode_multivalue(raw.get("days", ""))
+    # Derive days from each gig's festival_day (so "Thursday Night" gigs count
+    # as Thursday even though their calendar date is Friday).
+    days = sorted(set(g["festival_day"] for g in gigs)) or decode_multivalue(raw.get("days", ""))
     locations = sorted(set(g["venue"] for g in gigs)) or decode_multivalue(raw.get("locations", ""))
 
     genres_raw = raw.get("genre", "") or raw.get("genres", "")

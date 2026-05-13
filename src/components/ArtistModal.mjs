@@ -295,7 +295,7 @@ export default {
                 :class="['gig-row', gigStatus(gig)]"
               >
                 <span class="time">{{ formatTime(gig.start) }}</span>
-                <span class="day">{{ gig.day }}</span>
+                <span class="day">{{ gig.festival_day || gig.day }}</span>
                 <span class="venue">{{ venuePretty(gig.venue) }}</span>
               </div>
             </div>

@@ -4,7 +4,7 @@ import { css, glob } from "../deps/goober.mjs";
 import { applicationReady, applicationError, signalDOMReady } from "../services/data/lifecycle.mjs";
 import { artists, venues, distances, filters as filterOptions } from "../services/data/festival-data.mjs";
 import { shortlistSet, toggle as toggleShortlist } from "../services/shortlist.mjs";
-import { matchesFilters, visibleGigsFor, sortArtistsAlpha } from "../services/filtering.mjs";
+import { matchesFilters, visibleGigsFor, sortArtistsAlpha, festivalDayOf } from "../services/filtering.mjs";
 import { festivalDayFor, DAY_ORDER } from "../services/festival.mjs";
 import { venuePretty } from "../utilities/format.mjs";
 import Header from "./Header.mjs";
@@ -94,7 +94,7 @@ export default {
       const seen = new Map();
       for (const artist of artists.value) {
         for (const gig of artist.gigs) {
-          if (gig.day === activeDay.value && !seen.has(gig.venue)) {
+          if (festivalDayOf(gig) === activeDay.value && !seen.has(gig.venue)) {
             seen.set(gig.venue, gig.venue_name || venuePretty(gig.venue));
           }
         }
