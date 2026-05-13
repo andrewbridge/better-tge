@@ -74,6 +74,9 @@ export default {
     const defaultDay = festivalDayFor(Date.now()) || DAY_ORDER[0];
     const mode = ref(defaultDay);
     persistRef(mode, "mode", false);
+    // Guard against stale mode values from a previous layout (e.g. "now", "all")
+    const validModes = new Set([...DAY_ORDER, "shortlist"]);
+    if (!validModes.has(mode.value)) mode.value = defaultDay;
 
     const selectedVenue = ref("");
     const selectedArtist = ref(null);
