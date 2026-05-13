@@ -36,15 +36,20 @@ DAY_TO_DATE = {
     "thursday": "2026-05-14",
     "friday": "2026-05-15",
     "saturday": "2026-05-16",
+    # Sunday is only valid as a calendar day for Saturday-night gigs that
+    # cross midnight; no festival programming happens during the day.
+    "sunday": "2026-05-17",
     # Also handle title-case from the HTML
     "Wednesday": "2026-05-13",
     "Thursday": "2026-05-14",
     "Friday": "2026-05-15",
     "Saturday": "2026-05-16",
+    "Sunday": "2026-05-17",
 }
 
-# A "Thursday Night HH:MM" gig is calendar-Friday but belongs to Thursday's
-# evening programming. NEXT_DAY maps the night-label day to its calendar day.
+# The site labels late-night gigs using the night-of day name (e.g. a
+# 2:15am set after Thursday's evening shows as "2:15am Thursday"). NEXT_DAY
+# maps each night-of label to the calendar day the gig actually falls on.
 NEXT_DAY = {
     "wednesday": "thursday",
     "thursday": "friday",
@@ -54,12 +59,6 @@ NEXT_DAY = {
 
 # Gigs before this hour belong to the previous day's festival programming.
 NIGHT_CUTOFF_HOUR = 5
-PREV_DAY = {
-    "thursday": "wednesday",
-    "friday": "thursday",
-    "saturday": "friday",
-    "sunday": "saturday",
-}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; better-tge-scraper/1.0)",
@@ -98,6 +97,20 @@ def get_artist_html(slug, force=False):
     with open(cp, "w", encoding="utf-8") as f:
         f.write(html)
     return html
+
+
+def parse_hour_24(time_str):
+    """Extract the 24h hour from a time string like '2:15am', '8pm', or '00:15'."""
+    m = re.match(r"(\d{1,2})(?::(\d{2}))?(am|pm)?", time_str.strip(), re.IGNORECASE)
+    if not m:
+        return None
+    hour = int(m.group(1))
+    meridiem = (m.group(3) or "").lower()
+    if meridiem == "pm" and hour != 12:
+        hour += 12
+    elif meridiem == "am" and hour == 12:
+        hour = 0
+    return hour
 
 
 def parse_time(time_str, calendar_day):
@@ -175,36 +188,44 @@ def parse_gigs(html):
 
         time_day_raw = re.sub(r"<[^>]+>", "", cells[1]).strip()
 
-        # Format A: "8:00pm Thursday" — daytime gig, day-of-week is the calendar day.
+        # Format A: "8:00pm Thursday" / "2:15am Thursday" — time first, then night-of day.
+        # Format B: "Thursday Night 00:15" — night-of day first, then 24h time.
+        # In BOTH formats the day name is the night-of label, not the calendar day.
         td_m = re.match(r'(\d{1,2}(?::\d{2})?(?:am|pm))\s+(\w+)', time_day_raw, re.IGNORECASE)
         if td_m:
             time_str = td_m.group(1)
-            calendar_day = td_m.group(2).lower()
+            night_label = td_m.group(2).lower()
         else:
-            # Format B: "Thursday Night 00:15" — calendar day is the *next* day.
             td_m = re.match(r'(\w+)\s+[Nn]ight\s+(\d{1,2}:\d{2})', time_day_raw)
             if not td_m:
                 continue
+            night_label = td_m.group(1).lower()
             time_str = td_m.group(2)
-            calendar_day = NEXT_DAY.get(td_m.group(1).lower(), "")
 
-        if calendar_day not in DAY_TO_DATE:
+        hour_24 = parse_hour_24(time_str)
+        if hour_24 is None:
+            continue
+
+        # If the gig starts before the night cutoff, the calendar day is the
+        # day AFTER the night-of label (e.g. "2:15am Thursday" → Fri calendar).
+        if hour_24 < NIGHT_CUTOFF_HOUR:
+            calendar_day = NEXT_DAY.get(night_label, "")
+        else:
+            calendar_day = night_label
+
+        if night_label not in DAY_TO_DATE or calendar_day not in DAY_TO_DATE:
             continue
 
         start_iso = parse_time(time_str, calendar_day)
         if not start_iso:
             continue
 
-        # Gigs before NIGHT_CUTOFF_HOUR belong to the previous day's evening.
-        iso_hour = int(start_iso[11:13])
-        festival_day = PREV_DAY[calendar_day] if iso_hour < NIGHT_CUTOFF_HOUR and calendar_day in PREV_DAY else calendar_day
-
         gigs.append({
             "venue": venue_slug,
             "venue_name": venue_name,
             "start": start_iso,
             "day": calendar_day,
-            "festival_day": festival_day,
+            "festival_day": night_label,
         })
 
     return gigs
