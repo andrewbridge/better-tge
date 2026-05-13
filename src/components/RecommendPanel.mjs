@@ -156,43 +156,30 @@ const panelCls = css`
     40% { transform: translateY(-6px); }
   }
 
-  .composer {
-    display: flex;
-    gap: 0;
+  .option-bar {
     border-top: 2px solid var(--rule);
+    padding: 0.6rem 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
     flex-shrink: 0;
-
-    textarea {
-      flex: 1;
-      font-family: 'Newsreader', serif;
-      font-size: 0.9rem;
-      padding: 0.6rem 0.75rem;
-      border: none;
-      background: var(--paper);
-      color: var(--ink);
-      resize: none;
-      min-height: 2.8rem;
-      max-height: 8rem;
-      line-height: 1.5;
-
-      &:focus { outline: none; }
-    }
+    background: var(--tint);
 
     button {
       font-family: 'Space Mono', monospace;
       font-size: 0.65rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      background: var(--hot);
-      color: var(--paper);
-      border: none;
-      border-left: 2px solid var(--rule);
-      padding: 0 1rem;
+      letter-spacing: 0.04em;
+      padding: 0.4rem 0.75rem;
+      border: 1.5px solid var(--rule);
+      box-shadow: 2px 2px 0 var(--rule);
+      background: var(--paper);
+      color: var(--ink);
       cursor: pointer;
-      flex-shrink: 0;
 
-      &:disabled { background: var(--tint); color: var(--muted); cursor: default; }
-      &:focus { outline: 2px solid var(--ink); outline-offset: -2px; }
+      &:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+      &:disabled { opacity: 0.35; cursor: default; }
+      &:focus { outline: 2px solid var(--hot); outline-offset: 1px; }
     }
   }
 `;
@@ -254,32 +241,49 @@ export default {
   },
   emits: ["close", "open-artist"],
   setup(props, { emit }) {
-    const messages = ref([]);        // [{role, content, text, recommendations}]
-    const input = ref("");
+    const messages = ref([]);
     const loading = ref(false);
     const error = ref("");
     const streamingText = ref("");
 
     const hasKey = computed(() => !!apiKey.value);
 
+    // Options from the last assistant message (hidden while loading)
+    const currentOptions = computed(() => {
+      if (loading.value) return [];
+      for (let i = messages.value.length - 1; i >= 0; i--) {
+        if (messages.value[i].role === "assistant") {
+          return messages.value[i].options || [];
+        }
+      }
+      return [];
+    });
+
     function onKeydown(e) {
       if (e.key === "Escape") emit("close");
     }
 
-    async function send() {
-      const text = input.value.trim();
-      if (!text || loading.value) return;
+    async function sendMessage(userText, { addToUI = true } = {}) {
+      if (loading.value) return;
 
       error.value = "";
-      input.value = "";
-      messages.value.push({ role: "user", content: text, text, recommendations: [] });
       loading.value = true;
       streamingText.value = "";
 
+      // Build full API history from all shown messages
       const history = messages.value.map((m) => ({ role: m.role, content: m.content }));
-      const systemPrompt = buildSystemPrompt(props.artists, props.venues, props.distances);
 
+      // Append user turn to history (and optionally to the UI)
+      if (userText) {
+        history.push({ role: "user", content: userText });
+        if (addToUI) {
+          messages.value.push({ role: "user", content: userText, text: userText, recommendations: [], options: [] });
+        }
+      }
+
+      const systemPrompt = buildSystemPrompt(props.artists, props.venues, props.distances);
       let full = "";
+
       try {
         for await (const chunk of streamCompletion(apiKey.value, model.value, history, systemPrompt)) {
           full += chunk;
@@ -296,6 +300,7 @@ export default {
           content: full,
           text: parsed.text,
           recommendations: recs,
+          options: parsed.options,
         });
       } catch (e) {
         error.value = e.message;
@@ -307,29 +312,25 @@ export default {
       }
     }
 
+    function selectOption(label) {
+      sendMessage(label, { addToUI: true });
+    }
+
     function scrollToBottom() {
       const el = document.querySelector(".recommend-messages");
       if (el) el.scrollTop = el.scrollHeight;
     }
 
-    function onTextareaKey(e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        send();
-      }
-    }
-
-    return { messages, input, loading, error, streamingText, hasKey, send, onKeydown, onTextareaKey };
+    return { messages, loading, error, streamingText, hasKey, currentOptions, sendMessage, selectOption, onKeydown };
   },
   mounted() {
     document.body.classList.add("recommend-open");
     document.addEventListener("keydown", this.onKeydown);
     this._release = trapFocus(this.$refs.sheet);
 
-    // Kick off with an initial AI prompt if no messages yet
+    // Kick off silently — no user bubble, AI goes straight to options
     if (this.messages.length === 0 && this.hasKey) {
-      this.input = "Start";
-      this.send();
+      this.sendMessage("Start", { addToUI: false });
     }
   },
   beforeUnmount() {
@@ -384,16 +385,13 @@ export default {
               </div>
             </div>
 
-            <div class="composer">
-              <textarea
-                v-model="input"
+            <div v-if="currentOptions.length || loading" class="option-bar" aria-label="Options">
+              <button
+                v-for="opt in currentOptions"
+                :key="opt"
                 :disabled="loading"
-                rows="1"
-                placeholder="What are you in the mood for?"
-                aria-label="Message"
-                @keydown="onTextareaKey"
-              ></textarea>
-              <button :disabled="!input.trim() || loading" @click="send">Send</button>
+                @click="selectOption(opt)"
+              >{{ opt }}</button>
             </div>
           </template>
         </div>
