@@ -1,5 +1,24 @@
 import { gigStatus } from "./festival.mjs";
 
+const PREV_DAY = {
+  thursday: "wednesday",
+  friday: "thursday",
+  saturday: "friday",
+  sunday: "saturday",
+};
+
+/**
+ * A gig's "festival day" — the day-of-evening it belongs to, even when its
+ * calendar date crosses midnight. Prefers an explicit festival_day from the
+ * scraper, then falls back to deriving from the start hour.
+ */
+export const festivalDayOf = (gig) => {
+  if (gig.festival_day) return gig.festival_day;
+  const hour = parseInt(gig.start.slice(11, 13), 10);
+  if (hour < 5) return PREV_DAY[gig.day] || gig.day;
+  return gig.day;
+};
+
 /**
  * @param {object} artist
  * @param {object} activeFilters  { day, country, genre, location }
@@ -49,7 +68,7 @@ export const visibleGigsFor = (artist, activeFilters, mode, nowMs) => {
   }
   if (day) {
     return artist.gigs.filter(
-      (g) => g.day === day && (!activeFilters.location || g.venue === activeFilters.location)
+      (g) => festivalDayOf(g) === day && (!activeFilters.location || g.venue === activeFilters.location)
     );
   }
   return artist.gigs;
