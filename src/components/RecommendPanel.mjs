@@ -324,7 +324,7 @@ export default {
   mounted() {
     document.body.classList.add("recommend-open");
     document.addEventListener("keydown", this.onKeydown);
-    this._release = trapFocus(this.$el.querySelector(".sheet"));
+    this._release = trapFocus(this.$refs.sheet);
 
     // Kick off with an initial AI prompt if no messages yet
     if (this.messages.length === 0 && this.hasKey) {
@@ -341,7 +341,7 @@ export default {
     <teleport to="#teleport-root">
       <div :class="$options.panelCls" role="dialog" aria-modal="true" aria-label="AI Recommendations">
         <div class="backdrop" @click="$emit('close')"></div>
-        <div class="sheet">
+        <div class="sheet" ref="sheet">
           <div class="panel-header">
             <h2>Recommend me something</h2>
             <button @click="$emit('close')" aria-label="Close">✕</button>

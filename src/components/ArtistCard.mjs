@@ -149,6 +149,9 @@ export default {
     genreLabel() {
       return this.artist.genres.slice(0, 2).join(" / ") || "";
     },
+    daysLabel() {
+      return this.artist.days.map((d) => d.slice(0, 3)).join(" · ");
+    },
   },
   template: `
     <article
@@ -166,15 +169,18 @@ export default {
       <div class="info">
         <p class="name">{{ artist.name }}</p>
         <p v-if="genreLabel" class="genre">{{ genreLabel }}</p>
-        <div
-          v-for="gig in visibleGigs"
-          :key="gig.start"
-          :class="['gig-row', gigStatus(gig)]"
-        >
-          <span :class="['status-pip', gigStatus(gig)]"></span>
-          <span class="venue">{{ venuePretty(gig.venue) }}</span>
-          <span>{{ formatTime(gig.start) }}</span>
-        </div>
+        <template v-if="visibleGigs.length">
+          <div
+            v-for="gig in visibleGigs"
+            :key="gig.start"
+            :class="['gig-row', gigStatus(gig)]"
+          >
+            <span :class="['status-pip', gigStatus(gig)]"></span>
+            <span class="venue">{{ venuePretty(gig.venue) }}</span>
+            <span>{{ formatTime(gig.start) }}</span>
+          </div>
+        </template>
+        <p v-else-if="daysLabel" class="gig-row" style="color:var(--muted)">{{ daysLabel }}</p>
       </div>
     </article>
   `,

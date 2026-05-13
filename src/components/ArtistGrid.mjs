@@ -50,6 +50,13 @@ const cls = css`
     flex-direction: column;
     gap: 0.5rem;
   }
+
+  /* Flat grid fallback when gig times aren't available */
+  .flat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
 `;
 
 export default {
@@ -72,6 +79,7 @@ export default {
       })).filter((x) => x.gigs.length > 0);
       return groupGigsByHour(withGigs);
     },
+    hasGroups() { return this.hourGroups.length > 0; },
   },
   methods: {
     formatHourLabel,
@@ -85,7 +93,8 @@ export default {
         {{ mode === 'shortlist' ? 'No artists shortlisted yet — tap ★ on any artist.' : 'No artists match.' }}
       </div>
 
-      <div v-else>
+      <!-- Time-grouped view when gig times are available -->
+      <div v-else-if="hasGroups">
         <div v-for="group in hourGroups" :key="group.ms" class="hour-group">
           <div class="hour-label">
             {{ formatHourLabel(group.ms) }}
@@ -103,6 +112,19 @@ export default {
             />
           </div>
         </div>
+      </div>
+
+      <!-- Flat alpha grid fallback when no gig timing data exists -->
+      <div v-else class="flat-grid">
+        <ArtistCard
+          v-for="artist in artists"
+          :key="artist.slug"
+          :artist="artist"
+          :visible-gigs="[]"
+          :shortlisted="shortlistSet.has(artist.slug)"
+          :now-ms="nowMs"
+          @open="$emit('open', $event)"
+        />
       </div>
     </section>
   `,

@@ -146,7 +146,7 @@ export default {
   mounted() {
     document.body.classList.add("settings-open");
     document.addEventListener("keydown", this.onKeydown);
-    this._release = trapFocus(this.$el.querySelector(".panel"));
+    this._release = trapFocus(this.$refs.panel);
   },
   beforeUnmount() {
     document.body.classList.remove("settings-open");
@@ -157,7 +157,7 @@ export default {
     <teleport to="#teleport-root">
       <div :class="$options.cls" role="dialog" aria-modal="true" aria-label="Settings">
         <div class="backdrop" @click="$emit('close')"></div>
-        <div class="panel">
+        <div class="panel" ref="panel">
           <button class="close-btn" @click="$emit('close')" aria-label="Close">✕</button>
           <h2>Settings</h2>
 
