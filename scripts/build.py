@@ -144,7 +144,7 @@ def parse_gigs(html):
             venue_slug = venue_m.group(1)
             venue_name = venue_m.group(2)
 
-        # Time cells: two .one-half cells — first is time, second is day
+        # Time cells: two .one-half divs — first is venue link, second is "12:15pm Thursday"
         cells = re.findall(
             r'<div class="grid__item float--left one-half">\s*(.*?)\s*</div>',
             block, re.DOTALL
@@ -152,14 +152,18 @@ def parse_gigs(html):
         if len(cells) < 2:
             continue
 
-        time_raw = re.sub(r"<[^>]+>", "", cells[0]).strip()
-        day_raw = re.sub(r"<[^>]+>", "", cells[1]).strip()
+        time_day_raw = re.sub(r"<[^>]+>", "", cells[1]).strip()
+        td_m = re.match(r'(\d{1,2}(?::\d{2})?(?:am|pm))\s+(\w+)', time_day_raw, re.IGNORECASE)
+        if not td_m:
+            continue
+        time_str = td_m.group(1)
+        day_str = td_m.group(2)
 
-        start_iso = parse_time(time_raw, day_raw)
+        start_iso = parse_time(time_str, day_str)
         if not start_iso:
             continue
 
-        day_key = day_raw.lower()
+        day_key = day_str.lower()
         if day_key not in DAY_TO_DATE:
             continue
 
