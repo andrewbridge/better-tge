@@ -43,14 +43,14 @@ DAY_TO_DATE = {
     "Saturday": "2026-05-16",
 }
 
-# Gigs after midnight belong to the previous evening's programming.
-PREV_DAY = {
-    "thursday": "wednesday",
-    "friday": "thursday",
-    "saturday": "friday",
-    "sunday": "saturday",
+# For "DayName Night HH:MM" gigs, the ISO date uses the *next* calendar day
+# so that midnight gigs sort after evening gigs chronologically.
+NIGHT_TO_NEXT_DATE = {
+    "wednesday": "2026-05-14",
+    "thursday": "2026-05-15",
+    "friday": "2026-05-16",
+    "saturday": "2026-05-17",
 }
-LATE_NIGHT_CUTOFF_HOUR = 5
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; better-tge-scraper/1.0)",
@@ -92,24 +92,52 @@ def get_artist_html(slug, force=False):
 
 
 def parse_time(time_str, day_str):
-    """Parse "12:15pm Thursday" → ISO 8601 string with BST offset."""
+    """Parse a time string + day name → ISO 8601 with BST offset.
+
+    Handles both 12h with meridiem ("12:15pm") and 24h bare ("00:15").
+    """
     time_str = time_str.strip()
     day_str = day_str.strip()
 
-    # Match "12:15pm" or "12pm"
-    m = re.match(r"(\d{1,2})(?::(\d{2}))?(am|pm)", time_str, re.IGNORECASE)
+    m = re.match(r"(\d{1,2})(?::(\d{2}))?(am|pm)?", time_str, re.IGNORECASE)
     if not m:
         return None
     hour = int(m.group(1))
     minute = int(m.group(2) or 0)
-    meridiem = m.group(3).lower()
+    meridiem = (m.group(3) or "").lower()
+
+    if meridiem == "pm" and hour != 12:
+        hour += 12
+    elif meridiem == "am" and hour == 12:
+        hour = 0
+    # No meridiem → already 24h, use as-is
+
+    date_iso = DAY_TO_DATE.get(day_str)
+    if not date_iso:
+        return None
+
+    return f"{date_iso}T{hour:02d}:{minute:02d}:00+01:00"
+
+
+def parse_time_night(time_str, day_str):
+    """Like parse_time but uses the next calendar date so midnight gigs
+    sort after the same day's evening gigs."""
+    time_str = time_str.strip()
+    day_str = day_str.strip()
+
+    m = re.match(r"(\d{1,2})(?::(\d{2}))?(am|pm)?", time_str, re.IGNORECASE)
+    if not m:
+        return None
+    hour = int(m.group(1))
+    minute = int(m.group(2) or 0)
+    meridiem = (m.group(3) or "").lower()
 
     if meridiem == "pm" and hour != 12:
         hour += 12
     elif meridiem == "am" and hour == 12:
         hour = 0
 
-    date_iso = DAY_TO_DATE.get(day_str)
+    date_iso = NIGHT_TO_NEXT_DATE.get(day_str.lower())
     if not date_iso:
         return None
 
@@ -153,7 +181,7 @@ def parse_gigs(html):
             venue_slug = venue_m.group(1)
             venue_name = venue_m.group(2)
 
-        # Time cells: two .one-half divs — first is venue link, second is "12:15pm Thursday"
+        # Time cells: two .one-half divs — first is venue link, second is the time+day string.
         cells = re.findall(
             r'<div class="grid__item float--left one-half">\s*(.*?)\s*</div>',
             block, re.DOTALL
@@ -162,30 +190,29 @@ def parse_gigs(html):
             continue
 
         time_day_raw = re.sub(r"<[^>]+>", "", cells[1]).strip()
+
+        # Format A: "8:00pm Thursday" (daytime gigs, 12h + meridiem, day last)
         td_m = re.match(r'(\d{1,2}(?::\d{2})?(?:am|pm))\s+(\w+)', time_day_raw, re.IGNORECASE)
-        if not td_m:
-            continue
-        time_str = td_m.group(1)
-        day_str = td_m.group(2)
-
-        start_iso = parse_time(time_str, day_str)
-        if not start_iso:
-            continue
-
-        # Re-attribute early-morning gigs to the previous festival day
-        # (e.g. Friday 00:30 belongs to Thursday night). The ISO start stays
-        # as the literal wall-clock time, so chronological sort still works.
-        hour_m = re.match(r"(\d{1,2})(?::\d{2})?(am|pm)", time_str, re.IGNORECASE)
-        hour_24 = int(hour_m.group(1))
-        if hour_m.group(2).lower() == "pm" and hour_24 != 12:
-            hour_24 += 12
-        elif hour_m.group(2).lower() == "am" and hour_24 == 12:
-            hour_24 = 0
+        if td_m:
+            time_str = td_m.group(1)
+            day_str = td_m.group(2)
+            is_night = False
+        else:
+            # Format B: "Thursday Night 00:15" (late-night gigs, 24h, day first)
+            # ISO date uses the *next* calendar day so these sort after evening gigs.
+            td_m = re.match(r'(\w+)\s+[Nn]ight\s+(\d{1,2}:\d{2})', time_day_raw)
+            if not td_m:
+                continue
+            day_str = td_m.group(1)
+            time_str = td_m.group(2)
+            is_night = True
 
         day_key = day_str.lower()
-        if hour_24 < LATE_NIGHT_CUTOFF_HOUR and day_key in PREV_DAY:
-            day_key = PREV_DAY[day_key]
         if day_key not in DAY_TO_DATE:
+            continue
+
+        start_iso = parse_time_night(time_str, day_str) if is_night else parse_time(time_str, day_str)
+        if not start_iso:
             continue
 
         gigs.append({
