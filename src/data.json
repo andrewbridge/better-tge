@@ -1,0 +1,249 @@
+{
+  "_built_at": "2026-05-13T00:00:00.000Z",
+  "_fixture": true,
+  "filters": {
+    "country_options": [
+      {"val": "australia", "txt": "Australia"},
+      {"val": "canada", "txt": "Canada"},
+      {"val": "ireland", "txt": "Ireland"},
+      {"val": "uk", "txt": "UK"},
+      {"val": "usa", "txt": "USA"}
+    ],
+    "day_options": [
+      {"val": "wednesday", "txt": "Wednesday"},
+      {"val": "thursday", "txt": "Thursday"},
+      {"val": "friday", "txt": "Friday"},
+      {"val": "saturday", "txt": "Saturday"}
+    ],
+    "genre_options": [
+      {"val": "folk", "txt": "Folk"},
+      {"val": "indie", "txt": "Indie"},
+      {"val": "pop", "txt": "Pop"},
+      {"val": "r&b", "txt": "R&B"},
+      {"val": "rock", "txt": "Rock"}
+    ],
+    "location_options": [
+      {"val": "daltons", "txt": "Daltons"},
+      {"val": "hope-and-ruin", "txt": "Hope And Ruin"},
+      {"val": "one-church", "txt": "One Church"},
+      {"val": "prince-albert", "txt": "Prince Albert"},
+      {"val": "sticky-mike", "txt": "Sticky Mike"}
+    ]
+  },
+  "artists": [
+    {
+      "slug": "afternoon-bike-ride",
+      "name": "Afternoon Bike Ride",
+      "country": "Canada",
+      "country_ids": ["canada"],
+      "days": ["thursday", "saturday"],
+      "genres": ["indie"],
+      "locations": ["daltons", "prince-albert", "one-church"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/afternoon-bike-ride.jpg",
+      "link": "https://greatescapefestival.com/artists/afternoon-bike-ride/",
+      "slink": "",
+      "bio": "Afternoon Bike Ride is an eclectic indie trio from Montreal whose music blends jangly guitars with warm vocal harmonies and lyrics about everyday wonder.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/afternoonbikeride"},
+        {"service": "spotify", "url": "https://open.spotify.com/artist/afternoonbikeride"}
+      ],
+      "embeds": [
+        {"type": "youtube", "title": "Afternoon Bike Ride - Live", "src": "https://www.youtube.com/embed/dQw4w9WgXcQ"}
+      ],
+      "gigs": [
+        {"venue": "daltons", "venue_name": "Daltons", "start": "2026-05-14T12:15:00+01:00", "day": "thursday"},
+        {"venue": "prince-albert", "venue_name": "Prince Albert", "start": "2026-05-14T19:15:00+01:00", "day": "thursday"},
+        {"venue": "one-church", "venue_name": "One Church", "start": "2026-05-16T19:30:00+01:00", "day": "saturday"}
+      ]
+    },
+    {
+      "slug": "nova-twins",
+      "name": "Nova Twins",
+      "country": "UK",
+      "country_ids": ["uk"],
+      "days": ["wednesday"],
+      "genres": ["rock"],
+      "locations": ["hope-and-ruin"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/nova-twins.jpg",
+      "link": "https://greatescapefestival.com/artists/nova-twins/",
+      "slink": "",
+      "bio": "Nova Twins are a duo from East London delivering explosive afropunk riffs and fearless energy that make them one of UK rock's most thrilling acts.",
+      "socials": [
+        {"service": "twitter", "url": "https://twitter.com/novatwinsuk"},
+        {"service": "instagram", "url": "https://www.instagram.com/novatwins"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "hope-and-ruin", "venue_name": "Hope & Ruin", "start": "2026-05-13T20:00:00+01:00", "day": "wednesday"}
+      ]
+    },
+    {
+      "slug": "sprints",
+      "name": "Sprints",
+      "country": "Ireland",
+      "country_ids": ["ireland"],
+      "days": ["wednesday"],
+      "genres": ["rock", "indie"],
+      "locations": ["sticky-mike"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/sprints.jpg",
+      "link": "https://greatescapefestival.com/artists/sprints/",
+      "slink": "",
+      "bio": "Sprints are a Dublin post-punk band channelling urgent guitars and sardonic lyricism into some of the most vital guitar music of the decade.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/sprintsband"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "sticky-mike", "venue_name": "Sticky Mike's Frog Bar", "start": "2026-05-13T18:30:00+01:00", "day": "wednesday"}
+      ]
+    },
+    {
+      "slug": "amyl-and-the-sniffers",
+      "name": "Amyl and the Sniffers",
+      "country": "Australia",
+      "country_ids": ["australia"],
+      "days": ["wednesday", "thursday"],
+      "genres": ["rock"],
+      "locations": ["hope-and-ruin", "daltons"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/amyl-sniffers.jpg",
+      "link": "https://greatescapefestival.com/artists/amyl-and-the-sniffers/",
+      "slink": "",
+      "bio": "Amyl and the Sniffers are a Melbourne pub-rock band whose ferocious live shows and uncompromising punk attitude have made them a global force.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/amylandthesniffers"},
+        {"service": "spotify", "url": "https://open.spotify.com/artist/amylandthesniffers"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "hope-and-ruin", "venue_name": "Hope & Ruin", "start": "2026-05-13T22:00:00+01:00", "day": "wednesday"},
+        {"venue": "daltons", "venue_name": "Daltons", "start": "2026-05-14T17:00:00+01:00", "day": "thursday"}
+      ]
+    },
+    {
+      "slug": "beabadoobee",
+      "name": "beabadoobee",
+      "country": "UK",
+      "country_ids": ["uk"],
+      "days": ["friday"],
+      "genres": ["indie", "pop"],
+      "locations": ["one-church"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/beabadoobee.jpg",
+      "link": "https://greatescapefestival.com/artists/beabadoobee/",
+      "slink": "",
+      "bio": "beabadoobee is a London-based Filipino-British singer-songwriter whose dreamy bedroom-pop has evolved into full-band indie rock, earning her a devoted global following.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/beabadoobee"},
+        {"service": "spotify", "url": "https://open.spotify.com/artist/beabadoobee"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "one-church", "venue_name": "One Church", "start": "2026-05-15T21:00:00+01:00", "day": "friday"}
+      ]
+    },
+    {
+      "slug": "wet-leg",
+      "name": "Wet Leg",
+      "country": "UK",
+      "country_ids": ["uk"],
+      "days": ["wednesday"],
+      "genres": ["indie", "rock"],
+      "locations": ["prince-albert"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/wet-leg.jpg",
+      "link": "https://greatescapefestival.com/artists/wet-leg/",
+      "slink": "",
+      "bio": "Wet Leg are an Isle of Wight duo whose wry, deadpan indie rock captured the world's imagination with their Mercury Prize-winning debut album.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/wetlegband"},
+        {"service": "twitter", "url": "https://twitter.com/wetlegband"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "prince-albert", "venue_name": "Prince Albert", "start": "2026-05-13T21:00:00+01:00", "day": "wednesday"}
+      ]
+    },
+    {
+      "slug": "cassyette",
+      "name": "Cassyette",
+      "country": "UK",
+      "country_ids": ["uk"],
+      "days": ["thursday"],
+      "genres": ["pop", "rock"],
+      "locations": ["sticky-mike"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/cassyette.jpg",
+      "link": "https://greatescapefestival.com/artists/cassyette/",
+      "slink": "",
+      "bio": "Cassyette is a Stoke-on-Trent alt-pop artist combining industrial production with confessional songwriting to stunning and unnerving effect.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/cassyette_"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "sticky-mike", "venue_name": "Sticky Mike's Frog Bar", "start": "2026-05-14T20:30:00+01:00", "day": "thursday"}
+      ]
+    },
+    {
+      "slug": "lime-garden",
+      "name": "Lime Garden",
+      "country": "UK",
+      "country_ids": ["uk"],
+      "days": ["wednesday", "friday"],
+      "genres": ["indie", "pop"],
+      "locations": ["daltons", "hope-and-ruin"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/lime-garden.jpg",
+      "link": "https://greatescapefestival.com/artists/lime-garden/",
+      "slink": "",
+      "bio": "Lime Garden are a Brighton indie-pop four-piece crafting bittersweet anthems about friendship and growing up, with an irresistible melodic sensibility.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/limegardenband"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "daltons", "venue_name": "Daltons", "start": "2026-05-13T19:30:00+01:00", "day": "wednesday"},
+        {"venue": "hope-and-ruin", "venue_name": "Hope & Ruin", "start": "2026-05-15T18:00:00+01:00", "day": "friday"}
+      ]
+    },
+    {
+      "slug": "flo",
+      "name": "FLO",
+      "country": "UK",
+      "country_ids": ["uk"],
+      "days": ["saturday"],
+      "genres": ["r&b", "pop"],
+      "locations": ["one-church"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/flo.jpg",
+      "link": "https://greatescapefestival.com/artists/flo/",
+      "slink": "",
+      "bio": "FLO are a London R&B trio channelling 90s/00s influences through sharp contemporary production, quickly establishing themselves as one of the UK's most exciting new acts.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/floofficial"},
+        {"service": "spotify", "url": "https://open.spotify.com/artist/flo"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "one-church", "venue_name": "One Church", "start": "2026-05-16T20:30:00+01:00", "day": "saturday"}
+      ]
+    },
+    {
+      "slug": "the-lemon-twigs",
+      "name": "The Lemon Twigs",
+      "country": "USA",
+      "country_ids": ["usa"],
+      "days": ["thursday", "saturday"],
+      "genres": ["rock", "pop"],
+      "locations": ["hope-and-ruin", "prince-albert"],
+      "image": "https://greatescapefestival.com/wp-content/uploads/2026/04/lemon-twigs.jpg",
+      "link": "https://greatescapefestival.com/artists/the-lemon-twigs/",
+      "slink": "",
+      "bio": "The Lemon Twigs are a New York brother duo whose lavish, baroque rock arrangements and theatrical flair invite comparisons to Todd Rundgren and Big Star.",
+      "socials": [
+        {"service": "instagram", "url": "https://www.instagram.com/thelemontwigs"},
+        {"service": "spotify", "url": "https://open.spotify.com/artist/thelemontwigs"}
+      ],
+      "embeds": [],
+      "gigs": [
+        {"venue": "hope-and-ruin", "venue_name": "Hope & Ruin", "start": "2026-05-14T21:00:00+01:00", "day": "thursday"},
+        {"venue": "prince-albert", "venue_name": "Prince Albert", "start": "2026-05-16T18:00:00+01:00", "day": "saturday"}
+      ]
+    }
+  ]
+}

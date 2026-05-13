@@ -1,0 +1,10 @@
+{
+  "name": "better-tge",
+  "private": true,
+  "description": "Unofficial browser for The Great Escape festival line-up",
+  "scripts": {
+    "serve": "npx simplehttpserver -p 8080 src",
+    "dev": "npx live-server src --port=8080 --no-browser",
+    "build": "python3 scripts/build.py"
+  }
+}
