@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 OUT_PATH = os.path.join(os.path.dirname(__file__), "..", "src", "data.json")
-LINEUP_URL = "https://greatescapefestival.com/wp-admin/admin-ajax.php"
+LINEUP_URL = "https://greatescapefestival.com/wordpress/wp-admin/admin-ajax.php"
 ARTIST_BASE = "https://greatescapefestival.com/artists/"
 MAX_WORKERS = 5
 WORKER_DELAY = 0.3  # seconds between requests per worker
@@ -348,18 +348,17 @@ def fetch_lineup(force_rescrape):
             return json.load(f)
 
     print("Fetching line-up from admin-ajax.php …")
-    post_data = {
-        "action": "get_artists",
-        "nonce": "",  # public endpoint — no nonce required in practice
-    }
+    post_data = {"action": "fetch_line_up"}
     raw = fetch(LINEUP_URL, post_data=post_data)
     data = json.loads(raw)
 
-    # The endpoint returns either {"artists": [...]} or a bare list
-    if isinstance(data, dict):
-        artists = data.get("artists") or data.get("data") or list(data.values())[0]
-    else:
+    # The endpoint returns either a bare list or {"artists": [...]}
+    if isinstance(data, list):
         artists = data
+    elif isinstance(data, dict):
+        artists = data.get("artists") or data.get("data") or next(iter(data.values()))
+    else:
+        raise ValueError(f"Unexpected line-up payload type: {type(data)}")
 
     os.makedirs(CACHE_DIR, exist_ok=True)
     with open(lineup_cache, "w", encoding="utf-8") as f:
