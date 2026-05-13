@@ -6,8 +6,10 @@ import { artists, filters as filterOptions } from "../services/data/festival-dat
 import { shortlistSet, toggle as toggleShortlist } from "../services/shortlist.mjs";
 import { matchesFilters, visibleGigsFor, sortArtistsAlpha } from "../services/filtering.mjs";
 import { festivalDayFor, DAY_ORDER } from "../services/festival.mjs";
+import { venuePretty } from "../utilities/format.mjs";
 import Header from "./Header.mjs";
 import ModeBar from "./ModeBar.mjs";
+import VenueBar from "./VenueBar.mjs";
 import ArtistGrid from "./ArtistGrid.mjs";
 import ArtistModal from "./ArtistModal.mjs";
 
@@ -61,7 +63,7 @@ const appCls = css`
 
 export default {
   name: "App",
-  components: { Header, ModeBar, ArtistGrid, ArtistModal },
+  components: { Header, ModeBar, VenueBar, ArtistGrid, ArtistModal },
   setup() {
     signalDOMReady();
 
@@ -73,16 +75,36 @@ export default {
     const mode = ref(defaultDay);
     persistRef(mode, "mode", false);
 
+    const selectedVenue = ref("");
     const selectedArtist = ref(null);
+
+    // Clear venue selection when switching days
+    watch(mode, () => { selectedVenue.value = ""; });
 
     // The day to filter by: for day modes it's the mode itself, for shortlist show all days
     const activeDay = computed(() =>
       mode.value === "shortlist" ? "" : mode.value
     );
 
+    // Venues playing on the active day (for the VenueBar), derived before venue filter
+    const venueOptions = computed(() => {
+      if (!activeDay.value) return [];
+      const seen = new Map();
+      for (const artist of artists.value) {
+        for (const gig of artist.gigs) {
+          if (gig.day === activeDay.value && !seen.has(gig.venue)) {
+            seen.set(gig.venue, gig.venue_name || venuePretty(gig.venue));
+          }
+        }
+      }
+      return [...seen.entries()]
+        .map(([slug, name]) => ({ slug, name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    });
+
     const filteredArtists = computed(() => {
       const ms = nowMs.value;
-      const effectiveFilters = { day: activeDay.value, country: "", genre: "", location: "" };
+      const effectiveFilters = { day: activeDay.value, country: "", genre: "", location: selectedVenue.value };
       const list = artists.value.filter((a) =>
         matchesFilters(a, effectiveFilters, shortlistSet.value, mode.value, ms)
       );
@@ -90,7 +112,7 @@ export default {
     });
 
     const getVisibleGigs = (artist) => {
-      const effectiveFilters = { day: activeDay.value, country: "", genre: "", location: "" };
+      const effectiveFilters = { day: activeDay.value, country: "", genre: "", location: selectedVenue.value };
       return visibleGigsFor(artist, effectiveFilters, mode.value, nowMs.value);
     };
 
@@ -98,7 +120,8 @@ export default {
       applicationReady,
       applicationError,
       mode,
-      filterOptions,
+      selectedVenue,
+      venueOptions,
       nowMs,
       selectedArtist,
       filteredArtists,
@@ -128,6 +151,7 @@ export default {
       <template v-else>
         <Header />
         <ModeBar v-model="mode" />
+        <VenueBar v-model="selectedVenue" :venues="venueOptions" />
 
         <div class="count-bar">{{ filteredArtists.length }} artists</div>
 
