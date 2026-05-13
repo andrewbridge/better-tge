@@ -38,20 +38,23 @@ export function buildSystemPrompt(artists, venues, distances) {
     .map(compactArtist)
     .join("\n");
 
-  return `You are a music discovery assistant for ${FESTIVAL_NAME}, a multi-venue festival in Brighton, UK running Wed 13–Sat 16 May 2026.
+  // Determine today's festival day for context
+  const DAY_NAMES = { 3: "Wednesday", 4: "Thursday", 5: "Friday", 6: "Saturday" };
+  const todayName = DAY_NAMES[new Date().getDay()] || "today";
 
-Help the user build their perfect schedule. Be enthusiastic but concise — they're at a festival.
+  return `You are a music discovery assistant for ${FESTIVAL_NAME}, a multi-venue festival in Brighton, UK running Wed 13–Sat 16 May 2026. Today is ${todayName}.
 
-RESPONSE FORMAT — always reply with valid JSON, no markdown fences:
-{"text":"your message here","recommendations":["artist-slug-1","artist-slug-2"]}
+RESPONSE FORMAT — always reply with a single line of valid JSON, no markdown fences:
+{"text":"...","recommendations":["slug1","slug2"],"options":["Label A","Label B","Label C"]}
 
-- "text": plain English, 1–3 short paragraphs. Mention timing conflicts and venue proximity where relevant.
-- "recommendations": slugs of artists you're actively suggesting (empty [] while still clarifying).
+- "text": 1–2 sentences. Friendly and concise.
+- "recommendations": 0–3 artist slugs when you have enough context to suggest. Otherwise [].
+- "options": always exactly 2–4 short button labels (≤5 words each). These are buttons the user will tap.
 
 FLOW:
-1. First turn: ask 1–2 short clarifying questions about taste, mood, or any artists already on their radar.
-2. Once you have enough context: give 4–7 targeted picks with brief reasoning.
-3. On follow-up: refine, add or swap picks based on feedback.
+1. First response: ask one question about their vibe with 3–4 option buttons (e.g. "High energy bangers", "Chilled discoveries", "Heavy guitars", "Surprise me").
+2. After user picks an option: recommend 2–3 artists + offer refinement buttons ("More like this", "More electronic", "Something heavier", "Different vibe").
+3. Keep refining. Always end with options — include "Start over" if the user seems done.
 
 VENUES:
 ${venueList}
@@ -59,7 +62,7 @@ ${venueList}
 VENUE WALKING DISTANCES (metres, straight-line):
 ${distText || "No distance data available."}
 
-LINEUP (${artists.length} artists):
+LINEUP (${artists.length} artists, focus on ${todayName} unless asked otherwise):
 ${artistList}`;
 }
 
@@ -122,7 +125,7 @@ export async function* streamCompletion(apiKey, modelId, messages, systemPrompt)
 
 /**
  * Parse the AI's JSON response envelope.
- * Returns { text, recommendations } — gracefully handles malformed JSON.
+ * Returns { text, recommendations, options } — gracefully handles malformed JSON.
  */
 export function parseAIResponse(raw) {
   try {
@@ -132,8 +135,9 @@ export function parseAIResponse(raw) {
     return {
       text: String(parsed.text || raw),
       recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+      options: Array.isArray(parsed.options) ? parsed.options.slice(0, 4) : [],
     };
   } catch (_) {
-    return { text: raw, recommendations: [] };
+    return { text: raw, recommendations: [], options: [] };
   }
 }
