@@ -43,6 +43,15 @@ DAY_TO_DATE = {
     "Saturday": "2026-05-16",
 }
 
+# Gigs after midnight belong to the previous evening's programming.
+PREV_DAY = {
+    "thursday": "wednesday",
+    "friday": "thursday",
+    "saturday": "friday",
+    "sunday": "saturday",
+}
+LATE_NIGHT_CUTOFF_HOUR = 5
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; better-tge-scraper/1.0)",
     "Accept": "text/html,application/xhtml+xml,application/json,*/*",
@@ -163,7 +172,19 @@ def parse_gigs(html):
         if not start_iso:
             continue
 
+        # Re-attribute early-morning gigs to the previous festival day
+        # (e.g. Friday 00:30 belongs to Thursday night). The ISO start stays
+        # as the literal wall-clock time, so chronological sort still works.
+        hour_m = re.match(r"(\d{1,2})(?::\d{2})?(am|pm)", time_str, re.IGNORECASE)
+        hour_24 = int(hour_m.group(1))
+        if hour_m.group(2).lower() == "pm" and hour_24 != 12:
+            hour_24 += 12
+        elif hour_m.group(2).lower() == "am" and hour_24 == 12:
+            hour_24 = 0
+
         day_key = day_str.lower()
+        if hour_24 < LATE_NIGHT_CUTOFF_HOUR and day_key in PREV_DAY:
+            day_key = PREV_DAY[day_key]
         if day_key not in DAY_TO_DATE:
             continue
 
