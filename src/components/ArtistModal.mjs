@@ -222,7 +222,7 @@ export default {
       if (val) {
         document.body.classList.add("modal-open");
         this.$nextTick(() => {
-          const sheet = this.$el?.querySelector?.(".sheet");
+          const sheet = this.$refs.sheet;
           if (sheet) {
             if (this._releaseTrap) this._releaseTrap();
             this._releaseTrap = trapFocus(sheet);
@@ -268,7 +268,7 @@ export default {
     <teleport to="#teleport-root">
       <div v-if="artist" :class="$options.cls" role="dialog" :aria-label="artist.name" aria-modal="true">
         <div class="backdrop" @click="$emit('close')"></div>
-        <div class="sheet">
+        <div class="sheet" ref="sheet">
           <button class="close-btn" @click="$emit('close')" aria-label="Close">✕</button>
 
           <div class="hero">
