@@ -11,7 +11,7 @@ glob`body.recommend-open { overflow: hidden; }`;
 const panelCls = css`
   position: fixed;
   inset: 0;
-  z-index: 250;
+  z-index: 200;
   display: flex;
   align-items: flex-end;
   justify-content: center;

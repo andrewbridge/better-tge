@@ -11,7 +11,7 @@ glob`
 const cls = css`
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 250;
   display: flex;
   align-items: flex-end;
   justify-content: center;
