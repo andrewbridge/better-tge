@@ -87,16 +87,23 @@ def cache_path(slug):
     return os.path.join(CACHE_DIR, f"{slug}.html")
 
 
-def get_artist_html(slug, force=False):
+def get_artist_html(url, slug, force=False):
     cp = cache_path(slug)
     if not force and os.path.exists(cp):
         with open(cp, encoding="utf-8") as f:
             return f.read()
-    url = f"{ARTIST_BASE}{urllib.parse.quote(slug, safe='-')}/"
     html = fetch(url)
     with open(cp, "w", encoding="utf-8") as f:
         f.write(html)
     return html
+
+
+def slug_from_link(link):
+    """Extract the artist slug from a /artists/<slug>/ URL."""
+    if not link:
+        return ""
+    m = re.search(r"/artists/([^/]+)", link)
+    return m.group(1) if m else ""
 
 
 def parse_time(time_str, calendar_day):
@@ -346,13 +353,13 @@ def decode_multivalue(val):
 
 
 def process_artist(raw, force_rescrape):
-    slug = raw.get("slug", "")
-    if not slug:
-        slug = slugify(raw.get("name", "unknown"))
+    link = raw.get("link", "")
+    slug = slug_from_link(link) or raw.get("slug", "") or slugify(raw.get("name", "unknown"))
+    url = link or f"{ARTIST_BASE}{urllib.parse.quote(slug, safe='-')}/"
 
     time.sleep(WORKER_DELAY)
     try:
-        html = get_artist_html(slug, force=force_rescrape)
+        html = get_artist_html(url, slug, force=force_rescrape)
     except Exception as e:
         print(f"  WARN: failed to fetch {slug}: {e}", file=sys.stderr)
         html = ""
@@ -383,7 +390,7 @@ def process_artist(raw, force_rescrape):
         "genres": genres,
         "locations": locations,
         "image": image or raw.get("image", ""),
-        "link": f"{ARTIST_BASE}{slug}/",
+        "link": url,
         "slink": raw.get("slink", ""),
         "bio": bio,
         "socials": socials,

@@ -1,9 +1,11 @@
 import sys
 import os
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
-from build import parse_time, parse_gigs
+import build
+from build import parse_time, parse_gigs, slug_from_link, process_artist
 
 
 def make_html(time_day_text, venue_slug="test-venue", venue_name="Test Venue"):
@@ -116,6 +118,74 @@ class TestParseGigs(unittest.TestCase):
         gigs = parse_gigs(make_html("6:00pm Friday", "chalk", "Chalk"))
         self.assertEqual(gigs[0]["venue"], "chalk")
         self.assertEqual(gigs[0]["venue_name"], "Chalk")
+
+
+class TestSlugFromLink(unittest.TestCase):
+    def test_extracts_slug(self):
+        self.assertEqual(
+            slug_from_link("https://greatescapefestival.com/artists/1000-rabbits/"),
+            "1000-rabbits",
+        )
+
+    def test_extracts_slug_without_trailing_slash(self):
+        self.assertEqual(
+            slug_from_link("https://greatescapefestival.com/artists/odd-name"),
+            "odd-name",
+        )
+
+    def test_preserves_url_encoded_chars(self):
+        # The website's real slug may contain url-encoded characters that
+        # slugify(name) would not produce — we must keep them as-is.
+        self.assertEqual(
+            slug_from_link("https://greatescapefestival.com/artists/me%26you/"),
+            "me%26you",
+        )
+
+    def test_empty_input(self):
+        self.assertEqual(slug_from_link(""), "")
+
+    def test_no_match(self):
+        self.assertEqual(slug_from_link("https://example.com/foo/bar/"), "")
+
+
+class TestProcessArtistUsesLineupLink(unittest.TestCase):
+    """Regression: previously the URL was rebuilt from slugify(name), which
+    failed for any artist whose canonical slug differed from the slugified
+    name. We must fetch the link the lineup feed gives us."""
+
+    def _run(self, raw):
+        captured = {}
+
+        def fake_get_artist_html(url, slug, force=False):
+            captured["url"] = url
+            captured["slug"] = slug
+            return ""
+
+        with mock.patch.object(build, "get_artist_html", side_effect=fake_get_artist_html), \
+             mock.patch.object(build.time, "sleep"):
+            result = process_artist(raw, force_rescrape=False)
+        return captured, result
+
+    def test_uses_raw_link_verbatim(self):
+        raw = {
+            "name": "Mé & You!",  # slugify would mangle this
+            "link": "https://greatescapefestival.com/artists/me-and-you/",
+        }
+        captured, result = self._run(raw)
+        self.assertEqual(captured["url"], "https://greatescapefestival.com/artists/me-and-you/")
+        self.assertEqual(captured["slug"], "me-and-you")
+        # The output link must echo the URL we actually fetched, not a rebuild.
+        self.assertEqual(result["link"], "https://greatescapefestival.com/artists/me-and-you/")
+        self.assertEqual(result["slug"], "me-and-you")
+
+    def test_falls_back_when_link_missing(self):
+        raw = {"name": "Test Artist"}
+        captured, _ = self._run(raw)
+        self.assertEqual(captured["slug"], "test-artist")
+        self.assertEqual(
+            captured["url"],
+            "https://greatescapefestival.com/artists/test-artist/",
+        )
 
 
 if __name__ == "__main__":
