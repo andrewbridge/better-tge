@@ -6,7 +6,7 @@ import { groupGigsByHour } from "../services/filtering.mjs";
 const cls = css`
   flex: 1;
   overflow-y: auto;
-  padding: 0.75rem 1rem 2rem;
+  padding: 0.75rem 1rem calc(2rem + env(safe-area-inset-bottom, 0px));
 
   .empty {
     font-family: 'Space Mono', monospace;

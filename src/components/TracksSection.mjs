@@ -7,7 +7,7 @@ import { formatHourLabel } from "../utilities/format.mjs";
 const sectionCls = css`
   flex: 1;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 1rem;
