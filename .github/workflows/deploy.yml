@@ -10,8 +10,8 @@ on:
     - cron: '0 0-1 14-17 5 *'
   workflow_dispatch:
     inputs:
-      force_rescrape:
-        description: 'Force re-scrape all artist pages (ignore cache)'
+      force_regen_tracks:
+        description: 'Regenerate tracks via OpenRouter (costs tokens)'
         type: boolean
         default: false
 
@@ -47,7 +47,8 @@ jobs:
       - name: Run scraper
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: python3 scripts/build.py ${{ inputs.force_rescrape == 'true' && '--force-rescrape' || '' }}
+        run: |
+          python3 scripts/build.py --rescrape ${{ inputs.force_regen_tracks == 'true' && '--regen-tracks' || '' }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

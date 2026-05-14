@@ -62,14 +62,19 @@ export function buildSystemPrompt(artists, venues, distances, options = {}) {
 Help the user build their perfect schedule. Be enthusiastic but concise — they're at a festival.
 
 RESPONSE FORMAT — always reply with valid JSON, no markdown fences:
-{"text":"your message here","recommendations":["artist-slug-1","artist-slug-2"]}
+{"text":"your message here","recommendations":["artist-slug-1","artist-slug-2"],"options":["Energetic","Chill","Surprise me"]}
+
+CRITICAL: the user interface has NO text input. The "options" array is the user's ONLY way to reply. Every response MUST include 2–5 short button labels (max ~5 words each) that move the conversation forward. Never leave "options" empty.
 
 - "text": plain English, 1–3 short paragraphs. Mention timing conflicts and venue proximity where relevant.
 - "recommendations": slugs of artists you're actively suggesting (empty [] while still clarifying).
+- "options": 2–5 short button labels the user can click as their reply. NEVER empty.
+  While clarifying: offer mood/genre/energy choices (e.g. "Energetic", "Mellow", "Discover something new").
+  After picks: offer refinements (e.g. "More like this", "Swap a pick", "Show me something heavier").
 
 FLOW:
-1. First turn: ask 1–2 short clarifying questions about taste, mood, or any artists already on their radar.
-2. Once you have enough context: give 4–7 targeted picks with brief reasoning.
+1. First turn: ask 1–2 short clarifying questions about taste or mood, and provide the options as answers to those questions.
+2. Once you have enough context: give 4–7 targeted picks with brief reasoning. Still include options for follow-up refinements.
 3. On follow-up: refine, add or swap picks based on feedback.${modeInstruction}
 
 VENUES:
@@ -151,8 +156,9 @@ export function parseAIResponse(raw) {
     return {
       text: String(parsed.text || raw),
       recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+      options: Array.isArray(parsed.options) ? parsed.options.map(String) : [],
     };
   } catch (_) {
-    return { text: raw, recommendations: [] };
+    return { text: raw, recommendations: [], options: [] };
   }
 }

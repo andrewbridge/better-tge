@@ -33,6 +33,7 @@ WORKER_DELAY = 0.3  # seconds between requests per worker
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 TRACKS_CACHE = os.path.join(CACHE_DIR, "_tracks.json")
 TRACKS_MODEL = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-6")
+LIVE_DATA_URL = "https://andrewbridge.github.io/better-tge/data.json"
 
 DAY_TO_DATE = {
     "wednesday": "2026-05-13",
@@ -588,6 +589,38 @@ def scrape_venues(artists, force_rescrape):
     return result
 
 
+def fetch_live_data():
+    """Fetch the previously-published data.json. Returns dict or None on failure."""
+    try:
+        print(f"Fetching live data from {LIVE_DATA_URL} …")
+        raw = fetch(LIVE_DATA_URL)
+        return json.loads(raw)
+    except Exception as e:
+        print(f"WARN: live data fetch failed: {e}", file=sys.stderr)
+        return None
+
+
+def scrape_all_artists(raw_artists, force_rescrape):
+    """Scrape all artist pages concurrently and return processed artist list."""
+    processed = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(process_artist, a, force_rescrape): a
+            for a in raw_artists
+        }
+        done = 0
+        for fut in concurrent.futures.as_completed(futures):
+            done += 1
+            try:
+                result = fut.result()
+                processed.append(result)
+                if done % 20 == 0:
+                    print(f"  {done}/{len(raw_artists)} done …")
+            except Exception as e:
+                print(f"  ERROR processing artist: {e}", file=sys.stderr)
+    return processed
+
+
 def compact_artist_for_tracks(a):
     """Compact artist summary for the tracks generation prompt."""
     genres = f" [{'/'.join(a['genres'])}]" if a.get("genres") else ""
@@ -663,35 +696,43 @@ ARTISTS:
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--force-rescrape", action="store_true")
-    parser.add_argument("--skip-tracks", action="store_true", help="Skip AI track generation")
-    parser.add_argument("--force-tracks", action="store_true", help="Bypass tracks cache and regenerate")
+    parser = argparse.ArgumentParser(description="Build data.json for the better-tge site.")
+    parser.add_argument(
+        "--rescrape", action="store_true",
+        help="Bypass live cache and scrape artists/venues from source",
+    )
+    parser.add_argument(
+        "--regen-tracks", action="store_true",
+        help="Bypass tracks cache and regenerate via OpenRouter (costs tokens)",
+    )
     args = parser.parse_args()
 
-    raw_artists = fetch_lineup(args.force_rescrape)
-    print(f"Found {len(raw_artists)} artists in line-up")
+    live = fetch_live_data()
 
-    processed = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {
-            pool.submit(process_artist, a, args.force_rescrape): a
-            for a in raw_artists
-        }
-        done = 0
-        for fut in concurrent.futures.as_completed(futures):
-            done += 1
-            try:
-                result = fut.result()
-                processed.append(result)
-                if done % 20 == 0:
-                    print(f"  {done}/{len(raw_artists)} done …")
-            except Exception as e:
-                print(f"  ERROR processing artist: {e}", file=sys.stderr)
+    if live is None:
+        print("WARN: no live data — falling back to full fresh build", file=sys.stderr)
+        args.rescrape = True
+        args.regen_tracks = True
 
-    filters = build_filter_options(processed)
-    venue_data = scrape_venues(processed, args.force_rescrape)
-    tracks = [] if args.skip_tracks else generate_tracks(processed, force=args.force_tracks)
+    if args.rescrape:
+        raw_artists = fetch_lineup(force_rescrape=True)
+        print(f"Found {len(raw_artists)} artists in line-up")
+        processed = scrape_all_artists(raw_artists, force_rescrape=True)
+        filters = build_filter_options(processed)
+        venue_data = scrape_venues(processed, force_rescrape=True)
+    else:
+        print("Using artists/venues from live cache")
+        processed = live["artists"]
+        filters = live["filters"]
+        venue_data = {"venues": live["venues"], "distances": live["distances"]}
+
+    if args.regen_tracks:
+        tracks = generate_tracks(processed, force=True)
+    elif live and live.get("tracks"):
+        print(f"Tracks: using {len(live['tracks'])} from live cache")
+        tracks = live["tracks"]
+    else:
+        tracks = []
 
     output = {
         "_built_at": datetime.now(timezone.utc).isoformat(),

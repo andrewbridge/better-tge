@@ -169,6 +169,8 @@ export default {
           <TracksSection
             :tracks="tracks"
             :artists="artists"
+            :now-ms="nowMs"
+            :shortlist-set="shortlistSet"
             @open-artist="selectedArtist = $event"
           />
         </template>

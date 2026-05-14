@@ -371,26 +371,55 @@ export default {
       const activeMode = selectedMode ?? mode.value;
       const scopedArtists = artistsForMode(activeMode);
       const systemPrompt = buildSystemPrompt(scopedArtists, props.venues, props.distances, { mode: activeMode });
-      let full = "";
+
+      const MAX_RETRIES = 2;
+      let parsed = null;
+      let lastFull = "";
 
       try {
-        for await (const chunk of streamCompletion(apiKey.value, model.value, history, systemPrompt)) {
-          full += chunk;
-          streamingText.value = full;
-          await nextTick();
-          scrollToBottom();
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          let full = "";
+          const attemptHistory = attempt === 0
+            ? history
+            : [
+                ...history,
+                {
+                  role: "system",
+                  content: "Your last reply was rejected: 'options' was missing or empty. The user can ONLY respond by clicking buttons — there is no text input. Reply again with the same JSON shape and include an 'options' array of 2–5 short button labels. Never leave options empty.",
+                },
+              ];
+
+          for await (const chunk of streamCompletion(apiKey.value, model.value, attemptHistory, systemPrompt)) {
+            full += chunk;
+            streamingText.value = full;
+            await nextTick();
+            scrollToBottom();
+          }
+
+          lastFull = full;
+          parsed = parseAIResponse(full);
+          if (parsed.options.length > 0) break;
+
+          // Options missing — clear the partial bubble before retrying
+          streamingText.value = "";
+          if (attempt === MAX_RETRIES) {
+            error.value = "Couldn't get response options — try again.";
+            parsed = null;
+          }
         }
-        const parsed = parseAIResponse(full);
-        const recs = parsed.recommendations
-          .map((slug) => props.artists.find((a) => a.slug === slug))
-          .filter(Boolean);
-        messages.value.push({
-          role: "assistant",
-          content: full,
-          text: parsed.text,
-          recommendations: recs,
-          options: parsed.options,
-        });
+
+        if (parsed) {
+          const recs = parsed.recommendations
+            .map((slug) => props.artists.find((a) => a.slug === slug))
+            .filter(Boolean);
+          messages.value.push({
+            role: "assistant",
+            content: lastFull,
+            text: parsed.text,
+            recommendations: recs,
+            options: parsed.options,
+          });
+        }
       } catch (e) {
         error.value = e.message;
       } finally {
