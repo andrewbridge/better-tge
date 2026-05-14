@@ -36,11 +36,13 @@ DAY_TO_DATE = {
     "thursday": "2026-05-14",
     "friday": "2026-05-15",
     "saturday": "2026-05-16",
+    "sunday": "2026-05-17",
     # Also handle title-case from the HTML
     "Wednesday": "2026-05-13",
     "Thursday": "2026-05-14",
     "Friday": "2026-05-15",
     "Saturday": "2026-05-16",
+    "Sunday": "2026-05-17",
 }
 
 # A "Thursday Night HH:MM" gig is calendar-Friday but belongs to Thursday's
@@ -54,12 +56,6 @@ NEXT_DAY = {
 
 # Gigs before this hour belong to the previous day's festival programming.
 NIGHT_CUTOFF_HOUR = 5
-PREV_DAY = {
-    "thursday": "wednesday",
-    "friday": "thursday",
-    "saturday": "friday",
-    "sunday": "saturday",
-}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; better-tge-scraper/1.0)",
@@ -175,36 +171,46 @@ def parse_gigs(html):
 
         time_day_raw = re.sub(r"<[^>]+>", "", cells[1]).strip()
 
-        # Format A: "8:00pm Thursday" — daytime gig, day-of-week is the calendar day.
+        # Both formats use the night-of label (festival day) as the day name.
+        # Format A: "8:00pm Thursday" or "12:30am Friday"
         td_m = re.match(r'(\d{1,2}(?::\d{2})?(?:am|pm))\s+(\w+)', time_day_raw, re.IGNORECASE)
         if td_m:
             time_str = td_m.group(1)
-            calendar_day = td_m.group(2).lower()
+            night_label = td_m.group(2).lower()
         else:
-            # Format B: "Thursday Night 00:15" — calendar day is the *next* day.
+            # Format B: "Thursday Night 00:15"
             td_m = re.match(r'(\w+)\s+[Nn]ight\s+(\d{1,2}:\d{2})', time_day_raw)
             if not td_m:
                 continue
             time_str = td_m.group(2)
-            calendar_day = NEXT_DAY.get(td_m.group(1).lower(), "")
+            night_label = td_m.group(1).lower()
 
-        if calendar_day not in DAY_TO_DATE:
+        if night_label not in DAY_TO_DATE:
             continue
 
-        start_iso = parse_time(time_str, calendar_day)
-        if not start_iso:
+        # Provisional parse against the night-of date to learn the hour.
+        provisional_iso = parse_time(time_str, night_label)
+        if not provisional_iso:
             continue
 
-        # Gigs before NIGHT_CUTOFF_HOUR belong to the previous day's evening.
-        iso_hour = int(start_iso[11:13])
-        festival_day = PREV_DAY[calendar_day] if iso_hour < NIGHT_CUTOFF_HOUR and calendar_day in PREV_DAY else calendar_day
+        # Post-midnight gigs belong to the next calendar day but the same festival night.
+        if int(provisional_iso[11:13]) < NIGHT_CUTOFF_HOUR:
+            calendar_day = NEXT_DAY.get(night_label)
+            if not calendar_day or calendar_day not in DAY_TO_DATE:
+                continue
+            start_iso = parse_time(time_str, calendar_day)
+            if not start_iso:
+                continue
+        else:
+            calendar_day = night_label
+            start_iso = provisional_iso
 
         gigs.append({
             "venue": venue_slug,
             "venue_name": venue_name,
             "start": start_iso,
             "day": calendar_day,
-            "festival_day": festival_day,
+            "festival_day": night_label,
         })
 
     return gigs
