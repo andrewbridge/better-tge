@@ -3,6 +3,11 @@ name: Scrape & Deploy
 on:
   push:
     branches: [main]
+  schedule:
+    # Midday–midnight BST (11:00–23:00 UTC), May 13–16
+    - cron: '0 11-23 13-16 5 *'
+    # Midnight–3am BST (00:00–02:00 UTC), May 14–17 (next-morning wrap)
+    - cron: '0 0-1 14-17 5 *'
   workflow_dispatch:
     inputs:
       force_rescrape:
