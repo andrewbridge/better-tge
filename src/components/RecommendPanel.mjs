@@ -1,9 +1,10 @@
 import { ref, computed, nextTick } from "../deps/vue.mjs";
 import { css, glob } from "../deps/goober.mjs";
 import { apiKey, model } from "../services/settings.mjs";
-import { buildSystemPrompt, streamCompletion, parseAIResponse } from "../services/ai.mjs";
+import { buildSystemPrompt, streamCompletion, parseAIResponse, upcomingArtists } from "../services/ai.mjs";
 import { toggle as toggleShortlist, has as inShortlist } from "../services/shortlist.mjs";
 import { trapFocus } from "../utilities/focus-trap.mjs";
+import { festivalDayFor } from "../services/festival.mjs";
 
 glob`body.recommend-open { overflow: hidden; }`;
 
@@ -83,6 +84,70 @@ const panelCls = css`
     color: var(--muted);
 
     strong { color: var(--ink); display: block; margin-bottom: 0.25rem; }
+  }
+
+  .mode-select {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 2rem;
+
+    p {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.5rem;
+    }
+
+    .mode-btn {
+      width: 100%;
+      max-width: 320px;
+      padding: 1.1rem 1.25rem;
+      border: 2px solid var(--rule);
+      box-shadow: 4px 4px 0 var(--rule);
+      background: var(--paper);
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.1s;
+
+      &:hover { background: var(--tint); }
+      &:focus { outline: 2px solid var(--hot); outline-offset: 2px; }
+
+      .mode-title {
+        font-family: 'Bowlby One', sans-serif;
+        font-size: 0.95rem;
+        color: var(--hot);
+        display: block;
+        margin-bottom: 0.3rem;
+      }
+
+      .mode-desc {
+        font-family: 'Space Mono', monospace;
+        font-size: 0.65rem;
+        color: var(--muted);
+        display: block;
+        line-height: 1.5;
+      }
+    }
+  }
+
+  .change-mode {
+    background: none;
+    border: none;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+
+    &:hover { color: var(--ink); }
+    &:focus { outline: 2px solid var(--hot); }
   }
 
   .messages {
@@ -245,8 +310,15 @@ export default {
     const loading = ref(false);
     const error = ref("");
     const streamingText = ref("");
+    const mode = ref(null); // null | 'now' | 'today'
 
     const hasKey = computed(() => !!apiKey.value);
+
+    const modeLabel = computed(() => {
+      if (mode.value === "now") return "On soon";
+      if (mode.value === "today") return "Today";
+      return "Recommend me something";
+    });
 
     // Options from the last assistant message (hidden while loading)
     const currentOptions = computed(() => {
@@ -263,17 +335,32 @@ export default {
       if (e.key === "Escape") emit("close");
     }
 
-    async function sendMessage(userText, { addToUI = true } = {}) {
+    function artistsForMode(selectedMode) {
+      if (selectedMode === "now") {
+        const upcoming = upcomingArtists(props.artists, Date.now());
+        return upcoming.length > 0 ? upcoming : props.artists;
+      }
+      if (selectedMode === "today") {
+        const today = festivalDayFor(Date.now());
+        if (today) {
+          const dayArtists = props.artists.filter((a) =>
+            a.gigs.some((g) => (g.festival_day || g.day) === today)
+          );
+          return dayArtists.length > 0 ? dayArtists : props.artists;
+        }
+      }
+      return props.artists;
+    }
+
+    async function sendMessage(userText, { addToUI = true, selectedMode } = {}) {
       if (loading.value) return;
 
       error.value = "";
       loading.value = true;
       streamingText.value = "";
 
-      // Build full API history from all shown messages
       const history = messages.value.map((m) => ({ role: m.role, content: m.content }));
 
-      // Append user turn to history (and optionally to the UI)
       if (userText) {
         history.push({ role: "user", content: userText });
         if (addToUI) {
@@ -281,7 +368,9 @@ export default {
         }
       }
 
-      const systemPrompt = buildSystemPrompt(props.artists, props.venues, props.distances);
+      const activeMode = selectedMode ?? mode.value;
+      const scopedArtists = artistsForMode(activeMode);
+      const systemPrompt = buildSystemPrompt(scopedArtists, props.venues, props.distances, { mode: activeMode });
       let full = "";
 
       try {
@@ -312,6 +401,20 @@ export default {
       }
     }
 
+    function selectMode(selectedMode) {
+      mode.value = selectedMode;
+      const startText = selectedMode === "now"
+        ? "What's good right now? I need to decide quickly."
+        : "Help me plan what to watch today.";
+      sendMessage(startText, { addToUI: false, selectedMode });
+    }
+
+    function resetMode() {
+      mode.value = null;
+      messages.value = [];
+      error.value = "";
+    }
+
     function selectOption(label) {
       sendMessage(label, { addToUI: true });
     }
@@ -321,17 +424,12 @@ export default {
       if (el) el.scrollTop = el.scrollHeight;
     }
 
-    return { messages, loading, error, streamingText, hasKey, currentOptions, sendMessage, selectOption, onKeydown };
+    return { messages, loading, error, streamingText, hasKey, mode, modeLabel, currentOptions, sendMessage, selectMode, resetMode, selectOption, onKeydown };
   },
   mounted() {
     document.body.classList.add("recommend-open");
     document.addEventListener("keydown", this.onKeydown);
     this._release = trapFocus(this.$refs.sheet);
-
-    // Kick off silently — no user bubble, AI goes straight to options
-    if (this.messages.length === 0 && this.hasKey) {
-      this.sendMessage("Start", { addToUI: false });
-    }
   },
   beforeUnmount() {
     document.body.classList.remove("recommend-open");
@@ -344,8 +442,11 @@ export default {
         <div class="backdrop" @click="$emit('close')"></div>
         <div class="sheet" ref="sheet">
           <div class="panel-header">
-            <h2>Recommend me something</h2>
-            <button @click="$emit('close')" aria-label="Close">✕</button>
+            <h2>{{ modeLabel }}</h2>
+            <div style="display:flex;align-items:center;gap:0.75rem">
+              <button v-if="mode" class="change-mode" @click="resetMode">← Change</button>
+              <button @click="$emit('close')" aria-label="Close">✕</button>
+            </div>
           </div>
 
           <div v-if="!hasKey" class="no-key">
@@ -353,6 +454,18 @@ export default {
               <strong>No API key set</strong>
               Add an OpenRouter key in Settings to use AI recommendations.
             </div>
+          </div>
+
+          <div v-else-if="mode === null" class="mode-select">
+            <p>What are you after?</p>
+            <button class="mode-btn" @click="selectMode('now')">
+              <span class="mode-title">What's on soon?</span>
+              <span class="mode-desc">Quick picks from acts starting in the next 90 minutes</span>
+            </button>
+            <button class="mode-btn" @click="selectMode('today')">
+              <span class="mode-title">What should I watch today?</span>
+              <span class="mode-desc">Help planning your full day at the festival</span>
+            </button>
           </div>
 
           <template v-else>

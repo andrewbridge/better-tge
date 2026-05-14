@@ -52,6 +52,7 @@ export default {
       modes: [
         ...DAY_ORDER.map((d) => ({ id: d, label: DAY_LABELS[d] })),
         { id: "shortlist", label: "★ List" },
+        { id: "tracks", label: "✦ Tracks" },
       ],
     };
   },

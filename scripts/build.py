@@ -30,6 +30,9 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_DELAY = 1.1  # Nominatim rate limit: max 1 req/sec
 MAX_WORKERS = 5
 WORKER_DELAY = 0.3  # seconds between requests per worker
+OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+TRACKS_CACHE = os.path.join(CACHE_DIR, "_tracks.json")
+TRACKS_MODEL = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-6")
 
 DAY_TO_DATE = {
     "wednesday": "2026-05-13",
@@ -578,9 +581,85 @@ def scrape_venues(artists, force_rescrape):
     return result
 
 
+def compact_artist_for_tracks(a):
+    """Compact artist summary for the tracks generation prompt."""
+    genres = f" [{'/'.join(a['genres'])}]" if a.get("genres") else ""
+    bio = (a.get("bio") or "")[:200].replace("\n", " ").strip()
+    return f"{a['name']}{genres}: {bio}"
+
+
+def generate_tracks(artists, force=False):
+    """Call OpenRouter to generate thematic artist groupings. Returns list of track objects."""
+    if not force and os.path.exists(TRACKS_CACHE):
+        print("Tracks: loading from cache")
+        with open(TRACKS_CACHE, encoding="utf-8") as f:
+            return json.load(f)
+
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        print("WARN: OPENROUTER_API_KEY not set — skipping tracks generation", file=sys.stderr)
+        return []
+
+    print(f"Tracks: generating via {TRACKS_MODEL} …")
+    artist_list = "\n".join(compact_artist_for_tracks(a) for a in artists)
+
+    prompt = f"""Create 6–8 thematic "tracks" grouping the festival artists below by vibe, sound, or mood.
+
+Respond with valid JSON only — an array of objects with no markdown fences:
+[{{"id":"kebab-id","name":"Track Name","description":"One sentence vibe.","slugs":["slug1","slug2"]}}]
+
+Rules:
+- 4–10 artists per track
+- Tracks must be meaningfully distinct; use evocative names, not bare genre labels
+- An artist may appear in more than one track
+- Every artist should appear in at least one track
+
+ARTISTS:
+{artist_list}"""
+
+    body = json.dumps({
+        "model": TRACKS_MODEL,
+        "stream": False,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        f"{OPENROUTER_BASE}/chat/completions",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/andrewbridge/better-tge",
+            "X-Title": "better-tge",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        raw = data["choices"][0]["message"]["content"].strip()
+        # Strip accidental markdown fences
+        raw = re.sub(r"^```(?:json)?\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+        tracks = json.loads(raw)
+        if not isinstance(tracks, list):
+            raise ValueError("Expected a JSON array")
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(TRACKS_CACHE, "w", encoding="utf-8") as f:
+            json.dump(tracks, f, ensure_ascii=False, indent=2)
+        print(f"Tracks: generated {len(tracks)} tracks")
+        return tracks
+    except Exception as e:
+        print(f"WARN: tracks generation failed: {e}", file=sys.stderr)
+        return []
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--force-rescrape", action="store_true")
+    parser.add_argument("--skip-tracks", action="store_true", help="Skip AI track generation")
+    parser.add_argument("--force-tracks", action="store_true", help="Bypass tracks cache and regenerate")
     args = parser.parse_args()
 
     raw_artists = fetch_lineup(args.force_rescrape)
@@ -605,6 +684,7 @@ def main():
 
     filters = build_filter_options(processed)
     venue_data = scrape_venues(processed, args.force_rescrape)
+    tracks = [] if args.skip_tracks else generate_tracks(processed, force=args.force_tracks)
 
     output = {
         "_built_at": datetime.now(timezone.utc).isoformat(),
@@ -612,6 +692,7 @@ def main():
         "venues": venue_data["venues"],
         "distances": venue_data["distances"],
         "artists": processed,
+        "tracks": tracks,
     }
 
     out_path = os.path.abspath(OUT_PATH)
