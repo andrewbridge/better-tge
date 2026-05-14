@@ -1,6 +1,8 @@
-import { ref } from "../deps/vue.mjs";
+import { ref, computed } from "../deps/vue.mjs";
 import { css } from "../deps/goober.mjs";
-import { toggle as toggleShortlist, has as inShortlist } from "../services/shortlist.mjs";
+import ArtistCard from "./ArtistCard.mjs";
+import { groupGigsByHour } from "../services/filtering.mjs";
+import { formatHourLabel } from "../utilities/format.mjs";
 
 const sectionCls = css`
   flex: 1;
@@ -81,82 +83,68 @@ const cardCls = css`
     border-top: 1px solid var(--tint);
   }
 
-  .card-artists {
+  .card-timetable {
     border-top: 2px solid var(--rule);
     padding: 0.75rem 1rem;
     background: var(--tint);
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
+    flex-direction: column;
+    gap: 0.75rem;
+
+    .hour-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .hour-label {
+      font-family: 'Bowlby One', sans-serif;
+      font-size: 1.1rem;
+      color: var(--ink);
+      line-height: 1;
+      padding-bottom: 0.25rem;
+      border-bottom: 2px solid var(--hot);
+      margin-bottom: 0.2rem;
+    }
+
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
   }
 `;
 
-const chipCls = css`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-family: 'Space Mono', monospace;
-  font-size: 0.62rem;
-  border: 1.5px solid var(--rule);
-  padding: 0.2rem 0.5rem;
-  background: var(--paper);
-  cursor: pointer;
-  white-space: nowrap;
-  box-shadow: 2px 2px 0 var(--rule);
-
-  &:hover { background: var(--tint); }
-  &.starred { border-color: var(--hot); box-shadow: 2px 2px 0 var(--hot); }
-
-  .star { color: var(--hot); }
-`;
-
-const ArtistChip = {
-  name: "ArtistChip",
-  props: { artist: { type: Object, required: true } },
-  emits: ["open"],
-  data() {
-    return { starred: inShortlist(this.artist.slug) };
-  },
-  methods: {
-    toggle() {
-      toggleShortlist(this.artist.slug);
-      this.starred = inShortlist(this.artist.slug);
-    },
-  },
-  template: `
-    <span :class="[$options.chipCls, { starred }]">
-      <span @click="$emit('open', artist)" style="flex:1">{{ artist.name }}</span>
-      <button
-        @click.stop="toggle"
-        :aria-label="starred ? 'Remove from shortlist' : 'Add to shortlist'"
-        style="background:none;border:none;padding:0;cursor:pointer;line-height:1"
-      ><span class="star">{{ starred ? '★' : '☆' }}</span></button>
-    </span>
-  `,
-  chipCls,
-};
-
 const TrackCard = {
   name: "TrackCard",
-  components: { ArtistChip },
+  components: { ArtistCard },
   props: {
     track: { type: Object, required: true },
     artists: { type: Array, required: true },
+    nowMs: { type: Number, required: true },
+    shortlistSet: { type: Object, required: true },
   },
   emits: ["open-artist"],
   setup(props) {
     const expanded = ref(false);
 
-    const trackArtists = () =>
+    const trackArtists = computed(() =>
       props.track.slugs
         .map((slug) => props.artists.find((a) => a.slug === slug))
-        .filter(Boolean);
+        .filter(Boolean)
+    );
+
+    const hourGroups = computed(() => {
+      if (!expanded.value) return [];
+      const withGigs = trackArtists.value.map((a) => ({ artist: a, gigs: a.gigs }));
+      return groupGigsByHour(withGigs);
+    });
 
     function toggle() {
       expanded.value = !expanded.value;
     }
 
-    return { expanded, trackArtists, toggle };
+    return { expanded, trackArtists, hourGroups, toggle, formatHourLabel };
   },
   template: `
     <div :class="$options.cardCls">
@@ -168,13 +156,34 @@ const TrackCard = {
         </div>
       </div>
       <div class="card-desc">{{ track.description }}</div>
-      <div v-if="expanded" class="card-artists">
-        <ArtistChip
-          v-for="a in trackArtists()"
-          :key="a.slug"
-          :artist="a"
-          @open="$emit('open-artist', $event)"
-        />
+      <div v-if="expanded" class="card-timetable">
+        <template v-if="hourGroups.length">
+          <div v-for="group in hourGroups" :key="group.ms" class="hour-group">
+            <div class="hour-label">{{ formatHourLabel(group.ms) }}</div>
+            <div class="cards">
+              <ArtistCard
+                v-for="{ artist, gig } in group.entries"
+                :key="artist.slug + gig.start"
+                :artist="artist"
+                :visible-gigs="[gig]"
+                :shortlisted="shortlistSet.has(artist.slug)"
+                :now-ms="nowMs"
+                @open="$emit('open-artist', $event)"
+              />
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <ArtistCard
+            v-for="artist in trackArtists"
+            :key="artist.slug"
+            :artist="artist"
+            :visible-gigs="artist.gigs"
+            :shortlisted="shortlistSet.has(artist.slug)"
+            :now-ms="nowMs"
+            @open="$emit('open-artist', $event)"
+          />
+        </template>
       </div>
     </div>
   `,
@@ -187,6 +196,8 @@ export default {
   props: {
     tracks: { type: Array, required: true },
     artists: { type: Array, required: true },
+    nowMs: { type: Number, required: true },
+    shortlistSet: { type: Object, required: true },
   },
   emits: ["open-artist"],
   template: `
@@ -203,6 +214,8 @@ export default {
           :key="track.id"
           :track="track"
           :artists="artists"
+          :now-ms="nowMs"
+          :shortlist-set="shortlistSet"
           @open-artist="$emit('open-artist', $event)"
         />
       </template>

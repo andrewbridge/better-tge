@@ -188,5 +188,77 @@ class TestProcessArtistUsesLineupLink(unittest.TestCase):
         )
 
 
+class TestFetchLiveData(unittest.TestCase):
+    def test_returns_parsed_json_on_success(self):
+        payload = {"artists": [], "tracks": [{"id": "t1"}], "venues": {}, "distances": {}, "filters": {}}
+        with mock.patch.object(build, "fetch", return_value='{"artists":[],"tracks":[{"id":"t1"}],"venues":{},"distances":{},"filters":{}}'):
+            result = build.fetch_live_data()
+        self.assertEqual(result["tracks"][0]["id"], "t1")
+
+    def test_returns_none_on_network_error(self):
+        with mock.patch.object(build, "fetch", side_effect=Exception("network error")):
+            result = build.fetch_live_data()
+        self.assertIsNone(result)
+
+    def test_returns_none_on_invalid_json(self):
+        with mock.patch.object(build, "fetch", return_value="not json"):
+            result = build.fetch_live_data()
+        self.assertIsNone(result)
+
+
+class TestMainLiveCachePath(unittest.TestCase):
+    """Verify that main() uses live data wholesale when --rescrape/--regen-tracks are absent."""
+
+    _LIVE_STUB = {
+        "_built_at": "2026-01-01T00:00:00+00:00",
+        "artists": [{"slug": "a1", "name": "Artist One", "gigs": []}],
+        "filters": {"day_options": []},
+        "venues": {"v1": {"name": "Venue One"}},
+        "distances": {"v1": {"v2": 100}},
+        "tracks": [{"id": "track-1", "name": "Track One", "slugs": ["a1"]}],
+    }
+
+    def test_uses_live_data_with_no_flags(self):
+        mock_scrape = mock.MagicMock()
+        mock_regen = mock.MagicMock()
+
+        with mock.patch.object(build, "fetch_live_data", return_value=self._LIVE_STUB), \
+             mock.patch.object(build, "scrape_all_artists", mock_scrape), \
+             mock.patch.object(build, "generate_tracks", mock_regen), \
+             mock.patch("builtins.open", mock.mock_open()), \
+             mock.patch("os.makedirs"), \
+             mock.patch("sys.argv", ["build.py"]):
+            build.main()
+
+        mock_scrape.assert_not_called()
+        mock_regen.assert_not_called()
+
+    def test_falls_back_to_fresh_build_when_live_fails(self):
+        raw_artists = [{"name": "Test", "link": "https://greatescapefestival.com/artists/test/"}]
+        processed = [{"slug": "test", "name": "Test", "gigs": [], "days": [], "genres": [],
+                      "locations": [], "country": "", "country_ids": [], "image": "",
+                      "link": "", "slink": "", "bio": "", "socials": [], "embeds": []}]
+        venue_data = {"venues": {}, "distances": {}}
+
+        mock_lineup = mock.MagicMock(return_value=raw_artists)
+        mock_scrape = mock.MagicMock(return_value=processed)
+        mock_regen = mock.MagicMock(return_value=[])
+
+        with mock.patch.object(build, "fetch_live_data", return_value=None), \
+             mock.patch.object(build, "fetch_lineup", mock_lineup), \
+             mock.patch.object(build, "scrape_all_artists", mock_scrape), \
+             mock.patch.object(build, "build_filter_options", return_value={}), \
+             mock.patch.object(build, "scrape_venues", return_value=venue_data), \
+             mock.patch.object(build, "generate_tracks", mock_regen), \
+             mock.patch("builtins.open", mock.mock_open()), \
+             mock.patch("os.makedirs"), \
+             mock.patch("sys.argv", ["build.py"]):
+            build.main()
+
+        mock_lineup.assert_called_once()
+        mock_scrape.assert_called_once()
+        mock_regen.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
