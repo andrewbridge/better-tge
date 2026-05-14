@@ -25,7 +25,20 @@ function distanceText(distances) {
   return lines.join("\n");
 }
 
-export function buildSystemPrompt(artists, venues, distances) {
+const NOW_WINDOW_MS = 90 * 60 * 1000; // 90 minutes
+
+export function upcomingArtists(artists, nowMs = Date.now()) {
+  return artists.filter((a) =>
+    a.gigs.some((g) => {
+      const start = new Date(g.start).getTime();
+      return start >= nowMs && start <= nowMs + NOW_WINDOW_MS;
+    })
+  );
+}
+
+export function buildSystemPrompt(artists, venues, distances, options = {}) {
+  const { mode } = options;
+
   const venueList = Object.entries(venues)
     .map(([slug, v]) => `  ${slug}: ${v.name}${v.address ? ` (${v.address})` : ""}`)
     .join("\n");
@@ -37,6 +50,12 @@ export function buildSystemPrompt(artists, venues, distances) {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(compactArtist)
     .join("\n");
+
+  const modeInstruction = mode === "now"
+    ? "\nTIME MODE: only acts starting in the next 90 minutes are listed. Ask at most 1 quick question, then go straight to 3–5 picks. The user needs to decide fast."
+    : mode === "today"
+    ? "\nDAY MODE: help the user plan their full day. Ask about mood, energy, and any acts already seen, then give 5–7 picks across the day with timing context."
+    : "";
 
   return `You are a music discovery assistant for ${FESTIVAL_NAME}, a multi-venue festival in Brighton, UK running Wed 13–Sat 16 May 2026.
 
@@ -51,7 +70,7 @@ RESPONSE FORMAT — always reply with valid JSON, no markdown fences:
 FLOW:
 1. First turn: ask 1–2 short clarifying questions about taste, mood, or any artists already on their radar.
 2. Once you have enough context: give 4–7 targeted picks with brief reasoning.
-3. On follow-up: refine, add or swap picks based on feedback.
+3. On follow-up: refine, add or swap picks based on feedback.${modeInstruction}
 
 VENUES:
 ${venueList}

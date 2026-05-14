@@ -2,7 +2,7 @@ import { ref, computed, watch } from "../deps/vue.mjs";
 import { persistRef } from "../deps/vue.mjs";
 import { css, glob } from "../deps/goober.mjs";
 import { applicationReady, applicationError, signalDOMReady } from "../services/data/lifecycle.mjs";
-import { artists, venues, distances, filters as filterOptions } from "../services/data/festival-data.mjs";
+import { artists, venues, distances, tracks, filters as filterOptions } from "../services/data/festival-data.mjs";
 import { shortlistSet, toggle as toggleShortlist } from "../services/shortlist.mjs";
 import { matchesFilters, visibleGigsFor, sortArtistsAlpha, festivalDayOf } from "../services/filtering.mjs";
 import { festivalDayFor, DAY_ORDER } from "../services/festival.mjs";
@@ -14,6 +14,7 @@ import ArtistGrid from "./ArtistGrid.mjs";
 import ArtistModal from "./ArtistModal.mjs";
 import SettingsModal from "./SettingsModal.mjs";
 import RecommendPanel from "./RecommendPanel.mjs";
+import TracksSection from "./TracksSection.mjs";
 
 glob`
   *, *::before, *::after { box-sizing: border-box; }
@@ -65,7 +66,7 @@ const appCls = css`
 
 export default {
   name: "App",
-  components: { Header, ModeBar, VenueBar, ArtistGrid, ArtistModal, SettingsModal, RecommendPanel },
+  components: { Header, ModeBar, VenueBar, ArtistGrid, ArtistModal, SettingsModal, RecommendPanel, TracksSection },
   setup() {
     signalDOMReady();
 
@@ -75,7 +76,7 @@ export default {
     const defaultDay = festivalDayFor(Date.now()) || DAY_ORDER[0];
     const mode = ref(defaultDay);
     persistRef(mode, "mode", false);
-    const validModes = new Set([...DAY_ORDER, "shortlist"]);
+    const validModes = new Set([...DAY_ORDER, "shortlist", "tracks"]);
     if (!validModes.has(mode.value)) mode.value = defaultDay;
 
     const selectedVenue = ref("");
@@ -135,6 +136,7 @@ export default {
       artists,
       venues,
       distances,
+      tracks,
       _timer: timer,
     };
   },
@@ -162,18 +164,27 @@ export default {
           @open-recommend="showRecommend = !showRecommend"
         />
         <ModeBar v-model="mode" />
-        <VenueBar v-model="selectedVenue" :venues="venueOptions" />
 
-        <div class="count-bar">{{ filteredArtists.length }} artists</div>
+        <template v-if="mode === 'tracks'">
+          <TracksSection
+            :tracks="tracks"
+            :artists="artists"
+            @open-artist="selectedArtist = $event"
+          />
+        </template>
 
-        <ArtistGrid
-          :artists="filteredArtists"
-          :get-visible-gigs="getVisibleGigs"
-          :shortlist-set="shortlistSet"
-          :now-ms="nowMs"
-          :mode="mode"
-          @open="selectedArtist = $event"
-        />
+        <template v-else>
+          <VenueBar v-model="selectedVenue" :venues="venueOptions" />
+          <div class="count-bar">{{ filteredArtists.length }} artists</div>
+          <ArtistGrid
+            :artists="filteredArtists"
+            :get-visible-gigs="getVisibleGigs"
+            :shortlist-set="shortlistSet"
+            :now-ms="nowMs"
+            :mode="mode"
+            @open="selectedArtist = $event"
+          />
+        </template>
 
         <ArtistModal
           :artist="selectedArtist"
