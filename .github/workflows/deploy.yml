@@ -40,6 +40,8 @@ jobs:
             scraper-cache-
 
       - name: Run scraper
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python3 scripts/build.py ${{ inputs.force_rescrape == 'true' && '--force-rescrape' || '' }}
 
       - name: Upload Pages artifact
