@@ -37,7 +37,7 @@ export function upcomingArtists(artists, nowMs = Date.now()) {
 }
 
 export function buildSystemPrompt(artists, venues, distances, options = {}) {
-  const { mode } = options;
+  const { mode, currentDay } = options;
 
   const venueList = Object.entries(venues)
     .map(([slug, v]) => `  ${slug}: ${v.name}${v.address ? ` (${v.address})` : ""}`)
@@ -57,6 +57,8 @@ export function buildSystemPrompt(artists, venues, distances, options = {}) {
     ? "\nDAY MODE: help the user plan their full day. Ask about mood, energy, and any acts already seen, then give 5–7 picks across the day with timing context."
     : "";
 
+  const currentDayLine = currentDay ? `\nCURRENT FESTIVAL DAY: ${currentDay}` : "";
+
   return `You are a music discovery assistant for ${FESTIVAL_NAME}, a multi-venue festival in Brighton, UK running Wed 13–Sat 16 May 2026.
 
 Help the user build their perfect schedule. Be enthusiastic but concise — they're at a festival.
@@ -67,7 +69,7 @@ RESPONSE FORMAT — always reply with valid JSON, no markdown fences:
 CRITICAL: the user interface has NO text input. The "options" array is the user's ONLY way to reply. Every response MUST include 2–5 short button labels (max ~5 words each) that move the conversation forward. Never leave "options" empty.
 
 - "text": plain English, 1–3 short paragraphs. Mention timing conflicts and venue proximity where relevant.
-- "recommendations": slugs of artists you're actively suggesting (empty [] while still clarifying).
+- "recommendations": slugs of artists you're actively suggesting (empty [] while still clarifying). Only recommend artists whose gigs appear in the LINEUP below — all listed gigs are on ${currentDay ? `${currentDay}` : "the current festival day"}.
 - "options": 2–5 short button labels the user can click as their reply. NEVER empty.
   While clarifying: offer mood/genre/energy choices (e.g. "Energetic", "Mellow", "Discover something new").
   After picks: offer refinements (e.g. "More like this", "Swap a pick", "Show me something heavier").
@@ -75,7 +77,7 @@ CRITICAL: the user interface has NO text input. The "options" array is the user'
 FLOW:
 1. First turn: ask 1–2 short clarifying questions about taste or mood, and provide the options as answers to those questions.
 2. Once you have enough context: give 4–7 targeted picks with brief reasoning. Still include options for follow-up refinements.
-3. On follow-up: refine, add or swap picks based on feedback.${modeInstruction}
+3. On follow-up: refine, add or swap picks based on feedback.${modeInstruction}${currentDayLine}
 
 VENUES:
 ${venueList}
@@ -83,7 +85,7 @@ ${venueList}
 VENUE WALKING DISTANCES (metres, straight-line):
 ${distText || "No distance data available."}
 
-LINEUP (${artists.length} artists):
+LINEUP (${artists.length} artists playing today):
 ${artistList}`;
 }
 

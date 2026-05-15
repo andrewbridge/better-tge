@@ -232,6 +232,7 @@ export default {
           :artists="artists"
           :venues="venues"
           :distances="distances"
+          :now-ms="nowMs"
           @close="showRecommend = false"
           @open-artist="selectedArtist = $event"
         />
