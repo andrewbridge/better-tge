@@ -1,0 +1,15 @@
+{
+  "name": "better TGE",
+  "short_name": "better TGE",
+  "description": "Unofficial browser for The Great Escape festival line-up.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4ece1",
+  "theme_color": "#f4ece1",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -50,6 +50,11 @@ jobs:
         run: |
           python3 scripts/build.py --rescrape ${{ inputs.force_regen_tracks == 'true' && '--regen-tracks' || '' }}
 
+      - name: Stamp service worker with commit SHA
+        run: |
+          COMMIT_HASH=$(git rev-parse HEAD)
+          sed -i "s/%VERSION%/$COMMIT_HASH/g" src/sw.js
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
