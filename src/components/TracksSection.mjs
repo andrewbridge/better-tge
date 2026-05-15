@@ -1,7 +1,8 @@
 import { ref, computed } from "../deps/vue.mjs";
 import { css } from "../deps/goober.mjs";
 import ArtistCard from "./ArtistCard.mjs";
-import { groupGigsByHour } from "../services/filtering.mjs";
+import { groupGigsByHour, festivalDayOf } from "../services/filtering.mjs";
+import { festivalDayFor, DAY_ORDER } from "../services/festival.mjs";
 import { formatHourLabel } from "../utilities/format.mjs";
 
 const sectionCls = css`
@@ -97,6 +98,17 @@ const cardCls = css`
       gap: 0.4rem;
     }
 
+    .day-label {
+      font-family: 'Bowlby One', sans-serif;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding-bottom: 0.2rem;
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 0.1rem;
+    }
+
     .hour-label {
       font-family: 'Bowlby One', sans-serif;
       font-size: 1.1rem;
@@ -105,6 +117,13 @@ const cardCls = css`
       padding-bottom: 0.25rem;
       border-bottom: 2px solid var(--hot);
       margin-bottom: 0.2rem;
+    }
+
+    .empty-day {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      padding: 0.5rem 0;
     }
 
     .cards {
@@ -134,17 +153,33 @@ const TrackCard = {
         .filter(Boolean)
     );
 
+    const currentDay = computed(() => festivalDayFor(props.nowMs));
+
     const hourGroups = computed(() => {
-      if (!expanded.value) return [];
-      const withGigs = trackArtists.value.map((a) => ({ artist: a, gigs: a.gigs }));
+      if (!expanded.value || !currentDay.value) return [];
+      const withGigs = trackArtists.value
+        .map((a) => ({ artist: a, gigs: a.gigs.filter((g) => festivalDayOf(g) === currentDay.value) }))
+        .filter(({ gigs }) => gigs.length > 0);
       return groupGigsByHour(withGigs);
+    });
+
+    const dayGroups = computed(() => {
+      if (!expanded.value || currentDay.value) return [];
+      return DAY_ORDER
+        .map((day) => {
+          const withGigs = trackArtists.value
+            .map((a) => ({ artist: a, gigs: a.gigs.filter((g) => festivalDayOf(g) === day) }))
+            .filter(({ gigs }) => gigs.length > 0);
+          return { day, hourGroups: groupGigsByHour(withGigs) };
+        })
+        .filter(({ hourGroups }) => hourGroups.length > 0);
     });
 
     function toggle() {
       expanded.value = !expanded.value;
     }
 
-    return { expanded, trackArtists, hourGroups, toggle, formatHourLabel };
+    return { expanded, trackArtists, currentDay, hourGroups, dayGroups, toggle, formatHourLabel };
   },
   template: `
     <div :class="$options.cardCls">
@@ -157,32 +192,48 @@ const TrackCard = {
       </div>
       <div class="card-desc">{{ track.description }}</div>
       <div v-if="expanded" class="card-timetable">
-        <template v-if="hourGroups.length">
-          <div v-for="group in hourGroups" :key="group.ms" class="hour-group">
-            <div class="hour-label">{{ formatHourLabel(group.ms) }}</div>
-            <div class="cards">
-              <ArtistCard
-                v-for="{ artist, gig } in group.entries"
-                :key="artist.slug + gig.start"
-                :artist="artist"
-                :visible-gigs="[gig]"
-                :shortlisted="shortlistSet.has(artist.slug)"
-                :now-ms="nowMs"
-                @open="$emit('open-artist', $event)"
-              />
+        <!-- Current festival day: flat hour groups -->
+        <template v-if="currentDay">
+          <template v-if="hourGroups.length">
+            <div v-for="group in hourGroups" :key="group.ms" class="hour-group">
+              <div class="hour-label">{{ formatHourLabel(group.ms) }}</div>
+              <div class="cards">
+                <ArtistCard
+                  v-for="{ artist, gig } in group.entries"
+                  :key="artist.slug + gig.start"
+                  :artist="artist"
+                  :visible-gigs="[gig]"
+                  :shortlisted="shortlistSet.has(artist.slug)"
+                  :now-ms="nowMs"
+                  @open="$emit('open-artist', $event)"
+                />
+              </div>
             </div>
-          </div>
+          </template>
+          <div v-else class="empty-day">No artists from this track are playing today.</div>
         </template>
+        <!-- Outside festival: grouped by day then hour -->
         <template v-else>
-          <ArtistCard
-            v-for="artist in trackArtists"
-            :key="artist.slug"
-            :artist="artist"
-            :visible-gigs="artist.gigs"
-            :shortlisted="shortlistSet.has(artist.slug)"
-            :now-ms="nowMs"
-            @open="$emit('open-artist', $event)"
-          />
+          <template v-if="dayGroups.length">
+            <div v-for="dg in dayGroups" :key="dg.day">
+              <div class="day-label">{{ dg.day }}</div>
+              <div v-for="group in dg.hourGroups" :key="group.ms" class="hour-group">
+                <div class="hour-label">{{ formatHourLabel(group.ms) }}</div>
+                <div class="cards">
+                  <ArtistCard
+                    v-for="{ artist, gig } in group.entries"
+                    :key="artist.slug + gig.start"
+                    :artist="artist"
+                    :visible-gigs="[gig]"
+                    :shortlisted="shortlistSet.has(artist.slug)"
+                    :now-ms="nowMs"
+                    @open="$emit('open-artist', $event)"
+                  />
+                </div>
+              </div>
+            </div>
+          </template>
+          <div v-else class="empty-day">No gig times available for this track.</div>
         </template>
       </div>
     </div>

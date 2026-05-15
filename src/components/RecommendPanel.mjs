@@ -4,7 +4,10 @@ import { apiKey, model } from "../services/settings.mjs";
 import { buildSystemPrompt, streamCompletion, parseAIResponse, upcomingArtists } from "../services/ai.mjs";
 import { toggle as toggleShortlist, has as inShortlist } from "../services/shortlist.mjs";
 import { trapFocus } from "../utilities/focus-trap.mjs";
-import { festivalDayFor } from "../services/festival.mjs";
+import { festivalDayFor, DAY_ORDER } from "../services/festival.mjs";
+import { groupGigsByHour, festivalDayOf } from "../services/filtering.mjs";
+import { formatHourLabel } from "../utilities/format.mjs";
+import ArtistCard from "./ArtistCard.mjs";
 
 glob`body.recommend-open { overflow: hidden; }`;
 
@@ -188,11 +191,37 @@ const panelCls = css`
       box-shadow: 2px 2px 0 var(--rule);
     }
 
-    .chips {
+    .timetable {
+      width: 100%;
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      max-width: 100%;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .timetable-day {
+      font-family: 'Bowlby One', sans-serif;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding-bottom: 0.15rem;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .timetable-hour-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .timetable-hour-label {
+      font-family: 'Bowlby One', sans-serif;
+      font-size: 1rem;
+      color: var(--ink);
+      line-height: 1;
+      padding-bottom: 0.2rem;
+      border-bottom: 2px solid var(--hot);
+      margin-bottom: 0.1rem;
     }
   }
 
@@ -249,60 +278,14 @@ const panelCls = css`
   }
 `;
 
-const chipCls = css`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-family: 'Space Mono', monospace;
-  font-size: 0.62rem;
-  border: 1.5px solid var(--rule);
-  padding: 0.2rem 0.5rem;
-  background: var(--paper);
-  cursor: pointer;
-  white-space: nowrap;
-  box-shadow: 2px 2px 0 var(--rule);
-
-  &:hover { background: var(--tint); }
-  &.starred { border-color: var(--hot); box-shadow: 2px 2px 0 var(--hot); }
-
-  .star { color: var(--hot); }
-`;
-
-const ArtistChip = {
-  name: "ArtistChip",
-  props: {
-    artist: { type: Object, required: true },
-  },
-  emits: ["open"],
-  data() {
-    return { starred: inShortlist(this.artist.slug) };
-  },
-  methods: {
-    toggle() {
-      toggleShortlist(this.artist.slug);
-      this.starred = inShortlist(this.artist.slug);
-    },
-  },
-  template: `
-    <span :class="[$options.chipCls, { starred }]">
-      <span @click="$emit('open', artist)" style="flex:1">{{ artist.name }}</span>
-      <button
-        @click.stop="toggle"
-        :aria-label="starred ? 'Remove from shortlist' : 'Add to shortlist'"
-        style="background:none;border:none;padding:0;cursor:pointer;line-height:1"
-      ><span class="star">{{ starred ? '★' : '☆' }}</span></button>
-    </span>
-  `,
-  chipCls,
-};
-
 export default {
   name: "RecommendPanel",
-  components: { ArtistChip },
+  components: { ArtistCard },
   props: {
     artists: { type: Array, required: true },
     venues: { type: Object, required: true },
     distances: { type: Object, required: true },
+    nowMs: { type: Number, required: true },
   },
   emits: ["close", "open-artist"],
   setup(props, { emit }) {
@@ -313,6 +296,28 @@ export default {
     const mode = ref(null); // null | 'now' | 'today'
 
     const hasKey = computed(() => !!apiKey.value);
+
+    const currentDay = computed(() => festivalDayFor(props.nowMs));
+
+    function getHourGroups(recs) {
+      const day = currentDay.value;
+      if (!day) return null; // signal: use day groups instead
+      const withGigs = recs
+        .map((a) => ({ artist: a, gigs: a.gigs.filter((g) => festivalDayOf(g) === day) }))
+        .filter(({ gigs }) => gigs.length > 0);
+      return groupGigsByHour(withGigs);
+    }
+
+    function getDayGroups(recs) {
+      return DAY_ORDER
+        .map((day) => {
+          const withGigs = recs
+            .map((a) => ({ artist: a, gigs: a.gigs.filter((g) => festivalDayOf(g) === day) }))
+            .filter(({ gigs }) => gigs.length > 0);
+          return { day, hourGroups: groupGigsByHour(withGigs) };
+        })
+        .filter(({ hourGroups }) => hourGroups.length > 0);
+    }
 
     const modeLabel = computed(() => {
       if (mode.value === "now") return "On soon";
@@ -370,7 +375,13 @@ export default {
 
       const activeMode = selectedMode ?? mode.value;
       const scopedArtists = artistsForMode(activeMode);
-      const systemPrompt = buildSystemPrompt(scopedArtists, props.venues, props.distances, { mode: activeMode });
+      const today = currentDay.value;
+      const promptArtists = today
+        ? scopedArtists
+            .map((a) => ({ ...a, gigs: a.gigs.filter((g) => festivalDayOf(g) === today) }))
+            .filter((a) => a.gigs.length > 0)
+        : scopedArtists;
+      const systemPrompt = buildSystemPrompt(promptArtists, props.venues, props.distances, { mode: activeMode, currentDay: today });
 
       const MAX_RETRIES = 2;
       let parsed = null;
@@ -453,7 +464,7 @@ export default {
       if (el) el.scrollTop = el.scrollHeight;
     }
 
-    return { messages, loading, error, streamingText, hasKey, mode, modeLabel, currentOptions, sendMessage, selectMode, resetMode, selectOption, onKeydown };
+    return { messages, loading, error, streamingText, hasKey, mode, modeLabel, currentOptions, currentDay, getHourGroups, getDayGroups, sendMessage, selectMode, resetMode, selectOption, onKeydown, formatHourLabel, inShortlist };
   },
   mounted() {
     document.body.classList.add("recommend-open");
@@ -505,14 +516,45 @@ export default {
                 :class="['msg', msg.role]"
               >
                 <div class="bubble">{{ msg.text }}</div>
-                <div v-if="msg.recommendations.length" class="chips">
-                  <ArtistChip
-                    v-for="a in msg.recommendations"
-                    :key="a.slug"
-                    :artist="a"
-                    @open="$emit('open-artist', $event)"
-                  />
-                </div>
+                <template v-if="msg.recommendations.length">
+                  <!-- During festival: flat hour groups for current day -->
+                  <template v-if="currentDay">
+                    <div class="timetable">
+                      <div v-for="group in getHourGroups(msg.recommendations)" :key="group.ms" class="timetable-hour-group">
+                        <div class="timetable-hour-label">{{ formatHourLabel(group.ms) }}</div>
+                        <ArtistCard
+                          v-for="{ artist, gig } in group.entries"
+                          :key="artist.slug + gig.start"
+                          :artist="artist"
+                          :visible-gigs="[gig]"
+                          :shortlisted="inShortlist(artist.slug)"
+                          :now-ms="nowMs"
+                          @open="$emit('open-artist', $event)"
+                        />
+                      </div>
+                    </div>
+                  </template>
+                  <!-- Outside festival: grouped by day then hour -->
+                  <template v-else>
+                    <div class="timetable">
+                      <div v-for="dg in getDayGroups(msg.recommendations)" :key="dg.day">
+                        <div class="timetable-day">{{ dg.day }}</div>
+                        <div v-for="group in dg.hourGroups" :key="group.ms" class="timetable-hour-group">
+                          <div class="timetable-hour-label">{{ formatHourLabel(group.ms) }}</div>
+                          <ArtistCard
+                            v-for="{ artist, gig } in group.entries"
+                            :key="artist.slug + gig.start"
+                            :artist="artist"
+                            :visible-gigs="[gig]"
+                            :shortlisted="inShortlist(artist.slug)"
+                            :now-ms="nowMs"
+                            @open="$emit('open-artist', $event)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </template>
               </div>
 
               <div v-if="loading" class="msg assistant">
