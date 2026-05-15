@@ -1,4 +1,4 @@
-import { ref, computed, watch } from "../deps/vue.mjs";
+import { ref, computed, watch, nextTick } from "../deps/vue.mjs";
 import { persistRef } from "../deps/vue.mjs";
 import { css, glob } from "../deps/goober.mjs";
 import { applicationReady, applicationError, signalDOMReady } from "../services/data/lifecycle.mjs";
@@ -15,6 +15,7 @@ import ArtistModal from "./ArtistModal.mjs";
 import SettingsModal from "./SettingsModal.mjs";
 import RecommendPanel from "./RecommendPanel.mjs";
 import TracksSection from "./TracksSection.mjs";
+import SwitchToNowButton from "./SwitchToNowButton.mjs";
 
 glob`
   *, *::before, *::after { box-sizing: border-box; }
@@ -66,7 +67,7 @@ const appCls = css`
 
 export default {
   name: "App",
-  components: { Header, ModeBar, VenueBar, ArtistGrid, ArtistModal, SettingsModal, RecommendPanel, TracksSection },
+  components: { Header, ModeBar, VenueBar, ArtistGrid, ArtistModal, SettingsModal, RecommendPanel, TracksSection, SwitchToNowButton },
   setup() {
     signalDOMReady();
 
@@ -83,12 +84,31 @@ export default {
     const selectedArtist = ref(null);
     const showSettings = ref(false);
     const showRecommend = ref(false);
+    const nowVisibleInGrid = ref(true);
+    const artistGridRef = ref(null);
 
     watch(mode, () => { selectedVenue.value = ""; });
 
     const activeDay = computed(() =>
       mode.value === "shortlist" ? "" : mode.value
     );
+
+    const currentFestivalDay = computed(() => festivalDayFor(nowMs.value));
+
+    const showSwitchToNow = computed(() => {
+      if (!DAY_ORDER.includes(mode.value)) return false;
+      if (!currentFestivalDay.value) return false;
+      if (mode.value !== currentFestivalDay.value) return true;
+      return !nowVisibleInGrid.value;
+    });
+
+    const switchToNow = async () => {
+      if (mode.value !== currentFestivalDay.value) {
+        mode.value = currentFestivalDay.value;
+        await nextTick();
+      }
+      artistGridRef.value?.scrollToNow();
+    };
 
     const venueOptions = computed(() => {
       if (!activeDay.value) return [];
@@ -129,6 +149,10 @@ export default {
       selectedArtist,
       showSettings,
       showRecommend,
+      nowVisibleInGrid,
+      artistGridRef,
+      showSwitchToNow,
+      switchToNow,
       filteredArtists,
       shortlistSet,
       getVisibleGigs,
@@ -179,12 +203,14 @@ export default {
           <VenueBar v-model="selectedVenue" :venues="venueOptions" />
           <div class="count-bar">{{ filteredArtists.length }} artists</div>
           <ArtistGrid
+            ref="artistGridRef"
             :artists="filteredArtists"
             :get-visible-gigs="getVisibleGigs"
             :shortlist-set="shortlistSet"
             :now-ms="nowMs"
             :mode="mode"
             @open="selectedArtist = $event"
+            @now-visibility="nowVisibleInGrid = $event"
           />
         </template>
 
@@ -209,6 +235,8 @@ export default {
           @close="showRecommend = false"
           @open-artist="selectedArtist = $event"
         />
+
+        <SwitchToNowButton v-if="showSwitchToNow" @click="switchToNow" />
       </template>
     </div>
   `,

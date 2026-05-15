@@ -69,7 +69,10 @@ export default {
     nowMs: { type: Number, required: true },
     mode: { type: String, required: true },
   },
-  emits: ["open"],
+  emits: ["open", "now-visibility"],
+  data() {
+    return { nowInView: false };
+  },
   computed: {
     isEmpty() { return this.artists.length === 0; },
     hourGroups() {
@@ -81,10 +84,46 @@ export default {
     },
     hasGroups() { return this.hourGroups.length > 0; },
   },
+  watch: {
+    hourGroups() {
+      this.$nextTick(() => this._observeNowGroup());
+    },
+  },
+  mounted() {
+    this._observer = new IntersectionObserver(
+      (entries) => {
+        this.nowInView = entries[0]?.isIntersecting ?? false;
+        this._emitNowVisibility();
+      },
+      { root: this.$el, threshold: 0 },
+    );
+    this._observeNowGroup();
+  },
+  beforeUnmount() {
+    this._observer?.disconnect();
+  },
   methods: {
     formatHourLabel,
     isNowHour(ms) {
       return this.nowMs >= ms && this.nowMs < ms + 60 * 60_000;
+    },
+    _observeNowGroup() {
+      this._observer?.disconnect();
+      const el = this.$el.querySelector("[data-now-group]");
+      if (el) {
+        this._observer.observe(el);
+      } else {
+        this.nowInView = false;
+      }
+      this._emitNowVisibility();
+    },
+    _emitNowVisibility() {
+      const el = this.$el.querySelector("[data-now-group]");
+      this.$emit("now-visibility", !el || this.nowInView);
+    },
+    scrollToNow() {
+      const el = this.$el.querySelector("[data-now-group]");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     },
   },
   template: `
@@ -95,7 +134,7 @@ export default {
 
       <!-- Time-grouped view when gig times are available -->
       <div v-else-if="hasGroups">
-        <div v-for="group in hourGroups" :key="group.ms" class="hour-group">
+        <div v-for="group in hourGroups" :key="group.ms" class="hour-group" :data-now-group="isNowHour(group.ms) ? '' : null">
           <div class="hour-label">
             {{ formatHourLabel(group.ms) }}
             <span v-if="isNowHour(group.ms)" class="now-badge">now</span>
