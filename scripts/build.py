@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import concurrent.futures
+import html
 import json
 import math
 import os
@@ -99,6 +100,19 @@ def get_artist_html(url, slug, force=False):
     return html
 
 
+def decode_entities(s):
+    """Decode HTML entities in scraped text.
+
+    Runs unescape twice because WordPress sometimes double-encodes (e.g.
+    `&amp;#038;` → `&#038;` → `&`). After decoding, normalises NBSP
+    (U+00A0) to a regular space so downstream whitespace handling works.
+    """
+    if not s:
+        return s
+    out = html.unescape(html.unescape(s))
+    return out.replace(" ", " ")
+
+
 def slug_from_link(link):
     """Extract the artist slug from a /artists/<slug>/ URL."""
     if not link:
@@ -170,7 +184,7 @@ def parse_gigs(html):
             venue_name = venue_m.group(1).strip()
         else:
             venue_slug = venue_m.group(1)
-            venue_name = venue_m.group(2)
+            venue_name = decode_entities(venue_m.group(2))
 
         # Time cells: two .one-half divs — first is venue link, second is "12:15pm Thursday"
         cells = re.findall(
@@ -236,8 +250,10 @@ def parse_bio(html):
     if not m:
         return ""
     raw = m.group(1)
-    # Strip all tags, collapse whitespace
+    # Strip all tags, decode entities (incl. WordPress's double-encoded
+    # `&amp;#038;`), then collapse whitespace.
     text = re.sub(r"<[^>]+>", " ", raw)
+    text = decode_entities(text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -322,7 +338,7 @@ def parse_embeds(html):
         return embeds
 
     for dtype, title, src in found:
-        embeds.append({"type": dtype, "title": title, "src": src})
+        embeds.append({"type": dtype, "title": decode_entities(title), "src": src})
     return embeds
 
 
@@ -384,8 +400,8 @@ def process_artist(raw, force_rescrape):
 
     return {
         "slug": slug,
-        "name": raw.get("name", slug),
-        "country": raw.get("country_display", country_raw),
+        "name": decode_entities(raw.get("name", slug)),
+        "country": decode_entities(raw.get("country_display", country_raw)),
         "country_ids": countries,
         "days": days,
         "genres": genres,
@@ -467,27 +483,27 @@ def build_filter_options(artists):
     }
 
 
-def parse_venue_address(html):
+def parse_venue_address(page_html):
     """Extract a street address from a venue page."""
     # Schema.org address
-    m = re.search(r'"streetAddress"\s*:\s*"([^"]+)"', html)
+    m = re.search(r'"streetAddress"\s*:\s*"([^"]+)"', page_html)
     if m:
-        return m.group(1).strip()
+        return decode_entities(m.group(1).strip())
     # <address> tag
-    m = re.search(r'<address[^>]*>(.*?)</address>', html, re.DOTALL)
+    m = re.search(r'<address[^>]*>(.*?)</address>', page_html, re.DOTALL)
     if m:
-        return re.sub(r'<[^>]+>', ' ', m.group(1)).strip()
+        return decode_entities(re.sub(r'<[^>]+>', ' ', m.group(1)).strip())
     # Common WordPress venue field patterns
     for pat in [
         r'class="[^"]*address[^"]*"[^>]*>(.*?)</[^>]+>',
         r'class="[^"]*location[^"]*"[^>]*>(.*?)</[^>]+>',
         r'<p[^>]*>\s*([\w\s]+,\s*Brighton[^<]*)</p>',
     ]:
-        m = re.search(pat, html, re.DOTALL | re.IGNORECASE)
+        m = re.search(pat, page_html, re.DOTALL | re.IGNORECASE)
         if m:
             text = re.sub(r'<[^>]+>', ' ', m.group(1)).strip()
             if text:
-                return text
+                return decode_entities(text)
     return ""
 
 
@@ -589,12 +605,43 @@ def scrape_venues(artists, force_rescrape):
     return result
 
 
+def sanitise_live_data(live):
+    """Re-decode entities in cached live data.
+
+    The previously-published data.json may contain mishandled entities
+    (e.g. `R&#038;B`) from before the scraper decoded them. Apply
+    `decode_entities` on the way in so a normal (non-`--rescrape`) build
+    publishes clean text without anyone needing to do a full rescrape.
+
+    TODO: Remove this function (and its call site in `fetch_live_data`)
+    after 2027-05-12, when the next festival cycle will trigger a full
+    rescrape and the live cache will be clean again. Kept for now
+    because the 2026 festival is over and the source pages may no longer
+    be available to rescrape from.
+    """
+    for a in live.get("artists", []):
+        for field in ("name", "country", "bio"):
+            if a.get(field):
+                a[field] = decode_entities(a[field])
+        for e in a.get("embeds", []):
+            if e.get("title"):
+                e["title"] = decode_entities(e["title"])
+        for g in a.get("gigs", []):
+            if g.get("venue_name"):
+                g["venue_name"] = decode_entities(g["venue_name"])
+    for v in live.get("venues", {}).values():
+        for field in ("name", "address"):
+            if v.get(field):
+                v[field] = decode_entities(v[field])
+    return live
+
+
 def fetch_live_data():
     """Fetch the previously-published data.json. Returns dict or None on failure."""
     try:
         print(f"Fetching live data from {LIVE_DATA_URL} …")
         raw = fetch(LIVE_DATA_URL)
-        return json.loads(raw)
+        return sanitise_live_data(json.loads(raw))
     except Exception as e:
         print(f"WARN: live data fetch failed: {e}", file=sys.stderr)
         return None

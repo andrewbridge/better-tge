@@ -1,3 +1,4 @@
+import json
 import sys
 import os
 import unittest
@@ -5,7 +6,16 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import build
-from build import parse_time, parse_gigs, slug_from_link, process_artist
+from build import (
+    decode_entities,
+    parse_bio,
+    parse_embeds,
+    parse_gigs,
+    parse_time,
+    parse_venue_address,
+    process_artist,
+    slug_from_link,
+)
 
 
 def make_html(time_day_text, venue_slug="test-venue", venue_name="Test Venue"):
@@ -195,6 +205,32 @@ class TestFetchLiveData(unittest.TestCase):
             result = build.fetch_live_data()
         self.assertEqual(result["tracks"][0]["id"], "t1")
 
+    def test_sanitises_entities_from_live_cache(self):
+        # Regression: the previously-published data.json has mangled entities
+        # (e.g. `R&#038;B`). The live-cache build path must decode them on
+        # the way in so we don't republish them.
+        raw_json = json.dumps({
+            "artists": [{
+                "name": "Foo &amp; Bar",
+                "bio": "22 year-old R&#038;B cool girl",
+                "country": "C&#244;te d&#039;Ivoire",
+                "embeds": [{"title": "Foo &amp; Bar"}],
+                "gigs": [{"venue_name": "Hope &amp; Ruin"}],
+            }],
+            "venues": {"hr": {"name": "Hope &amp; Ruin", "address": "11&#8211;12 Queens Rd"}},
+            "tracks": [], "distances": {}, "filters": {},
+        })
+        with mock.patch.object(build, "fetch", return_value=raw_json):
+            result = build.fetch_live_data()
+        a = result["artists"][0]
+        self.assertEqual(a["name"], "Foo & Bar")
+        self.assertEqual(a["bio"], "22 year-old R&B cool girl")
+        self.assertEqual(a["country"], "Côte d'Ivoire")
+        self.assertEqual(a["embeds"][0]["title"], "Foo & Bar")
+        self.assertEqual(a["gigs"][0]["venue_name"], "Hope & Ruin")
+        self.assertEqual(result["venues"]["hr"]["name"], "Hope & Ruin")
+        self.assertEqual(result["venues"]["hr"]["address"], "11–12 Queens Rd")
+
     def test_returns_none_on_network_error(self):
         with mock.patch.object(build, "fetch", side_effect=Exception("network error")):
             result = build.fetch_live_data()
@@ -258,6 +294,93 @@ class TestMainLiveCachePath(unittest.TestCase):
         mock_lineup.assert_called_once()
         mock_scrape.assert_called_once()
         mock_regen.assert_called_once()
+
+
+class TestDecodeEntities(unittest.TestCase):
+    def test_numeric_entity(self):
+        # Real-world case from the festival site: `R&#038;B` should become `R&B`.
+        self.assertEqual(decode_entities("R&#038;B cool girl"), "R&B cool girl")
+
+    def test_named_entity(self):
+        self.assertEqual(decode_entities("Hope &amp; Ruin"), "Hope & Ruin")
+
+    def test_double_encoded(self):
+        # WordPress sometimes emits `&amp;#038;` — encoded twice. One pass of
+        # unescape would leave `&#038;` behind; we must collapse fully.
+        self.assertEqual(decode_entities("R&amp;#038;B"), "R&B")
+
+    def test_nbsp_normalised(self):
+        # NBSP (U+00A0) becomes a regular space so collapse-whitespace works.
+        self.assertEqual(decode_entities("foo bar"), "foo bar")
+
+    def test_nbsp_named_entity(self):
+        self.assertEqual(decode_entities("foo&nbsp;bar"), "foo bar")
+
+    def test_empty_passthrough(self):
+        self.assertEqual(decode_entities(""), "")
+        self.assertIsNone(decode_entities(None))
+
+
+class TestParseBioDecodesEntities(unittest.TestCase):
+    def test_bio_entities_are_decoded(self):
+        html_doc = (
+            "<div class='cont isgigs'>"
+            "<p>22 year-old &#8220;R&#038;B cool girl&#8221; "
+            "Ebony Osailah is a rising Brighton based artist.</p>"
+            "</div>"
+        )
+        bio = parse_bio(html_doc)
+        self.assertNotIn("&#038;", bio)
+        self.assertNotIn("&#8220;", bio)
+        self.assertIn("R&B cool girl", bio)
+        # Smart quotes survive as actual unicode characters.
+        self.assertIn("“", bio)
+        self.assertIn("”", bio)
+
+
+class TestParseGigsDecodesVenueName(unittest.TestCase):
+    def test_venue_name_entities_are_decoded(self):
+        gigs = parse_gigs(make_html("6:00pm Friday", "hope-and-ruin", "Hope &amp; Ruin"))
+        self.assertEqual(gigs[0]["venue_name"], "Hope & Ruin")
+
+
+class TestParseEmbedsDecodesTitle(unittest.TestCase):
+    def test_embed_title_entities_are_decoded(self):
+        html_doc = (
+            '<iframe data-type="youtube" '
+            'title="Foo &amp; Bar" '
+            'src="https://www.youtube.com/embed/xyz"></iframe>'
+        )
+        embeds = parse_embeds(html_doc)
+        self.assertEqual(embeds, [
+            {"type": "youtube", "title": "Foo & Bar", "src": "https://www.youtube.com/embed/xyz"},
+        ])
+
+
+class TestParseVenueAddressDecodesEntities(unittest.TestCase):
+    def test_schema_address_entities_are_decoded(self):
+        html_doc = '<script>{"streetAddress":"11&#8211;12 Queens Road"}</script>'
+        # U+2013 is the en-dash that `&#8211;` encodes.
+        self.assertEqual(parse_venue_address(html_doc), "11–12 Queens Road")
+
+
+class TestProcessArtistDecodesPayloadFields(unittest.TestCase):
+    def test_name_and_country_decoded(self):
+        raw = {
+            "name": "M&#233;tronome &amp; Co",
+            "country_display": "C&#244;te d&#039;Ivoire",
+            "link": "https://greatescapefestival.com/artists/metronome/",
+        }
+
+        def fake_get_artist_html(url, slug, force=False):
+            return ""
+
+        with mock.patch.object(build, "get_artist_html", side_effect=fake_get_artist_html), \
+             mock.patch.object(build.time, "sleep"):
+            result = process_artist(raw, force_rescrape=False)
+
+        self.assertEqual(result["name"], "Métronome & Co")
+        self.assertEqual(result["country"], "Côte d'Ivoire")
 
 
 if __name__ == "__main__":
