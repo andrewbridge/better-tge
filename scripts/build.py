@@ -612,6 +612,12 @@ def sanitise_live_data(live):
     (e.g. `R&#038;B`) from before the scraper decoded them. Apply
     `decode_entities` on the way in so a normal (non-`--rescrape`) build
     publishes clean text without anyone needing to do a full rescrape.
+
+    TODO: Remove this function (and its call site in `fetch_live_data`)
+    after 2027-05-12, when the next festival cycle will trigger a full
+    rescrape and the live cache will be clean again. Kept for now
+    because the 2026 festival is over and the source pages may no longer
+    be available to rescrape from.
     """
     for a in live.get("artists", []):
         for field in ("name", "country", "bio"):
